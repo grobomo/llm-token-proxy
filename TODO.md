@@ -21,16 +21,12 @@ Published to https://github.com/grobomo/llm-token-proxy (public). All commits pu
 
 ## High
 
-- [ ] **T102: Per-project header injection for stock clients.** Claude Code, Claude Desktop, and most MCPs do not send `X-Project` / `X-Task`. Without them, every CC session shows up as `consumer=claude-code` with no project. Options:
-  - A localhost shim on a separate port that injects headers based on cwd / git branch.
-  - A Claude Code hook that mutates outbound HTTP headers (if/when CC supports that).
-  - A tiny PowerShell launcher for Windows CC that sets per-cwd env vars.
-  - **Next step**: Investigate if Claude Code's `ANTHROPIC_BASE_URL` can include path segments or custom headers via env vars.
+- [x] **T102: Per-project header injection.** Solution: `ANTHROPIC_CUSTOM_HEADERS` env var in `.claude/settings.json`. Proxy captures `X-Project` + `X-Claude-Code-Session-Id`. Schema v4 adds `session_id` column. Commit f7f8b8e.
 
 ## Medium
 
 - [x] T104: Spike detection / alerting. Implemented `scripts/spike-detect.js` (commit 4fe7adf). Compares today vs 7d rolling avg, exits 1 on spike, writes `~/.token-proxy-spike-alert`. **Remaining**: wire into cron (recommended: every 30 min).
-- [ ] T105: Cost-report reconciliation script — diff Anthropic's `/v1/organizations/cost_report` against `usage.db` for the same window; report gaps. **Blocker**: need Anthropic admin API key with billing scope.
+- [x] T105: Cost-report reconciliation script. `scripts/reconcile-costs.js` — accepts `--report <file>` or `--api` with `ANTHROPIC_ADMIN_KEY`. Commit f73bd84.
 - [ ] T106: Data-driven consumer enforcement. Move stack-specific consumer rewrite logic into a generic mechanism configurable in `watchdog.conf`. **Depends on**: T102 (per-project headers).
 - [ ] T107: Dashboard: spike chart, top-N expensive operations, per-project leaderboard. **Depends on**: T102.
 - [ ] T108: Publish.json multi-account support — allow pushing to both grobomo (public) and tmemu (private backup). **Note**: stale tmemu pushurl was the original attempt at this; needs proper multi-remote design in `gh_auto`.
