@@ -1,0 +1,5 @@
+{
+  "github_account": "grobomo",
+  "visibility": "public",
+  "reason": "Generic LLM cost-monitoring proxy. No customer data, no internal infra references, no PII."
+}

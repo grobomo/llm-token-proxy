@@ -1,0 +1,28 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Local config (NEVER commit your real keys / paths)
+config.yaml
+watchdog.conf
+runtime.env
+.runtime-env
+
+# SQLite usage data
+usage.db
+usage.db-wal
+usage.db-shm
+*.sqlite
+*.sqlite3
+data/
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~
+
+# Local logs / runtime artifacts
+*.log
+.token-proxy-*

@@ -1,0 +1,29 @@
+{
+  "name": "llm-token-proxy",
+  "version": "0.1.0",
+  "description": "Local LLM usage-monitoring proxy. Captures every Claude/OpenAI-compatible API call from your tools (Claude Code, Claude Desktop, MCPs, custom agents) and records token usage + cost in SQLite, with a dashboard and a self-testing watchdog.",
+  "keywords": [
+    "claude",
+    "anthropic",
+    "openai",
+    "litellm",
+    "proxy",
+    "cost-tracking",
+    "token-tracking",
+    "llm-observability"
+  ],
+  "main": "proxy.js",
+  "scripts": {
+    "start": "node proxy.js",
+    "dev": "node --watch proxy.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "js-yaml": "^4.1.0",
+    "undici": "^6.6.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT"
+}

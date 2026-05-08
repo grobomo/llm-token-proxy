@@ -1,0 +1,49 @@
+# LLM Token Proxy — example configuration.
+# Copy this to config.yaml and edit. config.yaml is gitignored.
+
+port: 4100
+bind: 127.0.0.1   # 0.0.0.0 if Windows clients need to reach a WSL2 instance
+
+# --- Upstreams (preferred over the legacy single `upstream:` field) ---
+# The proxy auto-routes to the matching upstream based on API-key prefix.
+# Example: route Anthropic-formatted keys (sk-ant-...) to api.anthropic.com,
+# and route LiteLLM/RDsec-style JWTs (eyJ...) to your gateway.
+upstreams:
+  anthropic:
+    url: https://api.anthropic.com/v1
+    key_pattern: "sk-ant-"
+  # Add your own upstreams below. Examples:
+  # litellm:
+  #   url: https://your-litellm.example.com/v1
+  #   key_pattern: "eyJ"
+  # openai:
+  #   url: https://api.openai.com/v1
+  #   key_pattern: "sk-"
+
+# Optional legacy single-upstream fallback (used if no key_pattern matches).
+# Recommend leaving unset; force callers to use a known key prefix.
+# upstream: https://api.anthropic.com/v1
+
+db: ./usage.db
+
+# Cost per million tokens (USD). Update as pricing changes — see
+# https://www.anthropic.com/pricing and your gateway's published rates.
+pricing:
+  claude-opus-4-6:    { input: 5.00, output: 25.00, cache_read: 0.50, cache_write: 6.25 }
+  claude-sonnet-4-6:  { input: 3.00, output: 15.00, cache_read: 0.30, cache_write: 3.75 }
+  claude-haiku-4-5:   { input: 1.00, output:  5.00, cache_read: 0.10, cache_write: 1.25 }
+  default:            { input: 1.00, output:  5.00, cache_read: 0.10, cache_write: 1.25 }
+
+budget:
+  monthly_limit: 100.00     # USD
+  alert_at: [50, 75, 90]    # percent thresholds
+  alert_channel: log        # log | slack | webhook (slack/webhook need wiring)
+
+dashboard:
+  enabled: true
+  path: /dashboard
+  refresh_interval: 60      # seconds
+
+log:
+  level: info               # info | debug | warn | error
+  requests: true

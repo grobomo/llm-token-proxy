@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Token Proxy — Usage Dashboard</title>
+  <style>
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --border:    #30363d;
+      --text:      #e6edf3;
+      --muted:     #8b949e;
+      --accent:    #58a6ff;
+      --green:     #3fb950;
+      --yellow:    #d29922;
+      --red:       #f85149;
+      --orange:    #db6d28;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body { min-height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', monospace;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+      /* Vertical pan only — disables pinch/ctrl-wheel zoom that was being
+         interpreted in place of scroll on some trackpads. */
+      touch-action: pan-y;
+      overscroll-behavior-y: contain;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    header h1 { font-size: 18px; font-weight: 600; color: var(--accent); }
+    header .subtitle { color: var(--muted); font-size: 13px; }
+    header .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--green);
+      display: inline-block;
+      margin-right: 4px;
+    }
+    header .refresh-info { margin-left: auto; color: var(--muted); font-size: 12px; }
+
+    .period-bar {
+      display: flex;
+      gap: 6px;
+      padding: 12px 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      align-items: center;
+    }
+    .period-bar .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 4px; }
+    .period-bar button {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .period-bar button:hover  { border-color: var(--accent); }
+    .period-bar button.active {
+      background: var(--accent);
+      color: #0d1117;
+      border-color: var(--accent);
+      font-weight: 600;
+    }
+
+    main { padding: 24px; max-width: 1400px; margin: 0 auto; }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .card .value { font-size: 28px; font-weight: 700; margin-top: 4px; }
+    .card .sub   { color: var(--muted); font-size: 12px; margin-top: 4px; }
+
+    .budget-bar-wrap { margin-bottom: 24px; }
+    .budget-bar-wrap .bar-label {
+      display: flex; justify-content: space-between;
+      color: var(--muted); font-size: 12px; margin-bottom: 6px;
+    }
+    .budget-bar {
+      height: 12px;
+      background: var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .budget-bar .fill {
+      height: 100%;
+      border-radius: 6px;
+      transition: width 0.5s ease;
+      background: var(--green);
+    }
+    .budget-bar .fill.warn  { background: var(--yellow); }
+    .budget-bar .fill.crit  { background: var(--red); }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    @media (max-width: 800px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    .panel h2 {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+    .panel .hint { color: var(--muted); font-size: 11px; margin-bottom: 8px; }
+    .table-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th {
+      text-align: left;
+      padding: 10px 14px;
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+    }
+    td {
+      padding: 9px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,0.03); }
+
+    .mono { font-family: monospace; }
+    .right { text-align: right; }
+    .empty { padding: 24px; text-align: center; color: var(--muted); font-size: 12px; }
+    .empty code { background: var(--bg); padding: 1px 5px; border-radius: 3px; }
+
+    .mini-bar { display: flex; align-items: center; gap: 8px; }
+    .mini-bar .bar-track {
+      flex: 1;
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .mini-bar .bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      background: var(--accent);
+    }
+    .mini-bar .bar-pct { font-size: 11px; color: var(--muted); min-width: 36px; text-align: right; }
+
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 24px;
+      border-top: 1px solid var(--border);
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <span class="status-dot" id="status-dot"></span>
+  <h1>🌴 Token Proxy</h1>
+  <span class="subtitle">Biggest token eaters</span>
+  <div class="refresh-info">
+    Auto-refresh: <span id="countdown">60</span>s &nbsp;|&nbsp;
+    Last update: <span id="last-update">—</span>
+  </div>
+</header>
+
+<div class="period-bar">
+  <span class="label">Period</span>
+  <button data-period="today" class="active">Today</button>
+  <button data-period="7d">7 days</button>
+  <button data-period="30d">30 days</button>
+  <button data-period="all">All time</button>
+</div>
+
+<main>
+  <div class="cards" id="stat-cards">
+    <div class="card">
+      <div class="label">Spend (<span class="period-name">today</span>)</div>
+      <div class="value" id="period-spend">—</div>
+      <div class="sub" id="period-requests">— requests</div>
+    </div>
+    <div class="card">
+      <div class="label">Month Spend</div>
+      <div class="value" id="month-spend">—</div>
+      <div class="sub" id="month-limit">of $— limit</div>
+    </div>
+    <div class="card">
+      <div class="label">Input Tokens</div>
+      <div class="value" id="period-input">—</div>
+      <div class="sub" id="period-cache-read">— cache read</div>
+    </div>
+    <div class="card">
+      <div class="label">Output Tokens</div>
+      <div class="value" id="period-output">—</div>
+      <div class="sub" id="period-cache-write">— cache write</div>
+    </div>
+  </div>
+
+  <div class="budget-bar-wrap">
+    <div class="bar-label">
+      <span>Monthly Budget</span>
+      <span id="budget-pct-label">0%</span>
+    </div>
+    <div class="budget-bar">
+      <div class="fill" id="budget-fill" style="width:0%"></div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="panel">
+      <h2>By Source</h2>
+      <div class="hint">Auto-detected from User-Agent. Set the <code>X-Consumer</code> header to override.</div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Source</th>
+          <th class="right">Reqs</th>
+          <th class="right">Cost</th>
+          <th style="min-width:120px">Share</th>
+        </tr></thead>
+        <tbody id="by-consumer-rows"><tr><td colspan="4" class="empty">Loading…</td></tr></tbody>
+      </table></div>
+    </div>
+
+    <div class="panel">
+      <h2>By Model</h2>
+      <div class="hint">Cheapest models with similar quality save the most.</div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Model</th>
+          <th class="right">Reqs</th>
+          <th class="right">Cost</th>
+          <th style="min-width:120px">Share</th>
+        </tr></thead>
+        <tbody id="by-model-rows"><tr><td colspan="4" class="empty">Loading…</td></tr></tbody>
+      </table></div>
+    </div>
+
+    <div class="panel">
+      <h2>By Project</h2>
+      <div class="hint">Sender must set <code>X-Project: &lt;name&gt;</code> on each request.</div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Project</th>
+          <th class="right">Reqs</th>
+          <th class="right">Cost</th>
+          <th style="min-width:120px">Share</th>
+        </tr></thead>
+        <tbody id="by-project-rows"><tr><td colspan="4" class="empty">Loading…</td></tr></tbody>
+      </table></div>
+    </div>
+
+    <div class="panel">
+      <h2>By Task</h2>
+      <div class="hint">Sender must set <code>X-Task: &lt;id&gt;</code> on each request.</div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Task</th>
+          <th class="right">Reqs</th>
+          <th class="right">Cost</th>
+          <th style="min-width:120px">Share</th>
+        </tr></thead>
+        <tbody id="by-task-rows"><tr><td colspan="4" class="empty">Loading…</td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  Token Proxy &nbsp;·&nbsp;
+  <a href="/health" style="color:var(--accent)">Health</a> &nbsp;·&nbsp;
+  <a href="/api/summary" style="color:var(--accent)">API</a> &nbsp;·&nbsp;
+  <a href="/api/budget" style="color:var(--accent)">Budget</a>
+</footer>
+
+<script>
+  const $ = id => document.getElementById(id);
+
+  function fmtCost(usd) {
+    if (!usd || usd === 0) return '$0';
+    if (usd < 0.001)  return `$${(usd * 1000).toFixed(3)}m`;
+    if (usd < 1)      return `$${usd.toFixed(4)}`;
+    return `$${usd.toFixed(2)}`;
+  }
+
+  function fmtTokens(n) {
+    if (!n) return '0';
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000)     return `${(n / 1_000).toFixed(1)}k`;
+    return String(n);
+  }
+
+  function miniBar(pct) {
+    const p = Math.min(100, pct || 0).toFixed(1);
+    return `<div class="mini-bar">
+      <div class="bar-track"><div class="bar-fill" style="width:${p}%"></div></div>
+      <div class="bar-pct">${p}%</div>
+    </div>`;
+  }
+
+  function renderRollup(tbodyId, key, rows, hint) {
+    const tbody = $(tbodyId);
+    if (!rows || rows.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="4" class="empty">${hint}</td></tr>`;
+      return;
+    }
+    const totalCost = rows.reduce((s, r) => s + (r.total_cost_usd || 0), 0);
+    tbody.innerHTML = rows.map(r => {
+      const pct = totalCost > 0 ? (r.total_cost_usd / totalCost) * 100 : 0;
+      return `<tr>
+        <td class="mono">${r[key] ?? '(unset)'}</td>
+        <td class="right">${r.request_count || 0}</td>
+        <td class="right mono">${fmtCost(r.total_cost_usd)}</td>
+        <td>${miniBar(pct)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  let currentPeriod = 'today';
+  const PERIOD_LABEL = { today: 'today', '7d': 'last 7 days', '30d': 'last 30 days', all: 'all time' };
+
+  async function loadData() {
+    let data;
+    try {
+      const r = await fetch(`/api/summary?period=${encodeURIComponent(currentPeriod)}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      data = await r.json();
+    } catch (err) {
+      console.error('Failed to load data:', err);
+      $('status-dot').style.background = 'var(--red)';
+      return;
+    }
+
+    $('status-dot').style.background = 'var(--green)';
+    $('last-update').textContent = new Date().toLocaleTimeString();
+    document.querySelectorAll('.period-name').forEach(el => el.textContent = PERIOD_LABEL[currentPeriod] || currentPeriod);
+
+    const totals = data.totals || {};
+    const month  = data.month  || {};
+
+    $('period-spend').textContent     = fmtCost(totals.total_cost_usd);
+    $('period-requests').textContent  = `${totals.request_count || 0} requests`;
+    $('period-input').textContent     = fmtTokens(totals.total_input_tokens);
+    $('period-cache-read').textContent  = `${fmtTokens(totals.total_cache_read_tokens)} cache read`;
+    $('period-output').textContent    = fmtTokens(totals.total_output_tokens);
+    $('period-cache-write').textContent = `${fmtTokens(totals.total_cache_write_tokens)} cache write`;
+
+    $('month-spend').textContent = fmtCost(month.spent_usd);
+    $('month-limit').textContent = `of $${(month.limit_usd || 100).toFixed(0)} limit`;
+
+    const pct = month.percent_used || 0;
+    const fill = $('budget-fill');
+    fill.style.width = `${Math.min(100, pct)}%`;
+    fill.className = 'fill' + (pct >= 90 ? ' crit' : pct >= 50 ? ' warn' : '');
+    $('budget-pct-label').textContent = `${pct.toFixed(1)}% — ${fmtCost(month.spent_usd)} of $${(month.limit_usd||100).toFixed(0)}`;
+
+    renderRollup('by-consumer-rows', 'consumer', data.by_consumer, 'No data this period');
+    renderRollup('by-model-rows',    'model',    data.by_model,    'No data this period');
+
+    // Project/task: if every row is '(unset)', show the how-to-tag hint instead.
+    const projects = data.by_project || [];
+    const tasks    = data.by_task    || [];
+    const hasTaggedProjects = projects.some(r => r.project !== '(unset)');
+    const hasTaggedTasks    = tasks.some(r => r.task !== '(unset)');
+    renderRollup('by-project-rows', 'project', hasTaggedProjects ? projects : [],
+                 'No project tagging yet — set <code>X-Project: &lt;name&gt;</code> on requests to break down by project.');
+    renderRollup('by-task-rows',    'task',    hasTaggedTasks    ? tasks    : [],
+                 'No task tagging yet — set <code>X-Task: &lt;id&gt;</code> on requests to break down by task.');
+  }
+
+  // Period switcher
+  document.querySelectorAll('.period-bar button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.period-bar button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentPeriod = btn.dataset.period;
+      secondsLeft = REFRESH_INTERVAL;
+      $('countdown').textContent = secondsLeft;
+      loadData();
+    });
+  });
+
+  const REFRESH_INTERVAL = 60;
+  let secondsLeft = REFRESH_INTERVAL;
+
+  function tick() {
+    secondsLeft--;
+    $('countdown').textContent = secondsLeft;
+    if (secondsLeft <= 0) {
+      secondsLeft = REFRESH_INTERVAL;
+      loadData();
+    }
+  }
+
+  loadData();
+  setInterval(tick, 1000);
+</script>
+</body>
+</html>
