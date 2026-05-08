@@ -1,53 +1,39 @@
 # TODO
 
-## Session State (2026-05-08)
+## Session State (2026-05-08, end of session)
 
-Code is committed locally (`0d0ddcb`). Pushed to `joel-ginsberg_tmemu/llm-token-proxy` (private, works). NOT yet on grobomo (public) — blocked by auth.
+Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `ed496cb`.
+`gh_auto` fixed: uses inline credential helper for git, active-account switch/restore for gh.
+`gh-auto-gate` hook active in WSL — blocks raw `gh`/`git push`.
 
-### Immediate Blockers
+### Remaining Setup
 
-- [x] **FIX: grobomo gh keyring token authenticates as joel-ginsberg_tmemu (EMU).**
-  **Root cause (2026-05-08):** `gh` v2.57+ ignores `GH_TOKEN` env var when keyring auth is active — it always uses the "active account." `gh_auto` was setting `GH_TOKEN` correctly but `gh` didn't care.
-  **Fix applied:** Updated `gh_auto` to run `gh auth switch --user $ACCOUNT` before each command.
-- [x] **FIX: `gh_auto repo create --source=. --push` says "not a git repository" even after `git init`.**
-  Workaround used: create repo via API (`gh_auto api user/repos -X POST`), then `gh_auto push`.
-- [x] **CLEANUP: delete accidental `joel-ginsberg_tmemu/llm-token-proxy` repo** — repo does not exist (404); either never created successfully or already deleted.
-
-### Immediate Tasks
-
-- [x] Create `grobomo/llm-token-proxy` (public, empty) on GitHub — done 2026-05-08
-- [x] `gh_auto push origin main` — pushed commit 18b556c
-- [x] Trigger secret-scan GitHub Action on push; verify passes — conclusion: success
-- [x] Set up git local config: `user.name=grobomo`, `user.email=grobomo@users.noreply.github.com`
-- [ ] Also create `grobomo/openclaw` (private) and push openclaw mirror (no customer data found; Teams team_ids are TM-internal but not customer data — user approved for personal portable backup)
+- [ ] Create `grobomo/openclaw` (private) and push openclaw mirror. Prereqs: verify no customer data, user approved personal backup.
+- [ ] Audit all clients for `ANTHROPIC_BASE_URL` pointing direct (bypassing proxy) — T100 remaining gap.
 
 ---
 
-## TOP PRIORITY — Open Mystery
+## Completed
 
-- [x] **T100: Token cost mismatch investigation.** Root causes identified (2026-05-08):
-  - [x] **Streaming parse failures**: 52 Opus calls (status=200) logged `in=0 out=0 cost=$0` — fixed by T103 (commit 2575d0d).
-  - [x] **Example config had wrong prices**: showed $5/$25 Opus but actual is $15/$75. Fixed in config.example.yaml.
-  - [x] **Running config already correct**: prefix matching covers all `-aws` variants. No model substitution found.
-  - [ ] **Calls bypassing proxy**: can't determine from proxy data alone — need to audit `ANTHROPIC_BASE_URL` across all clients.
-  - [x] **Proxy daily rate ($218/d) → $1,744/8d ≈ $1,600 billing**: numbers reconcile within margin. Gap was the ~52 Opus parse failures (~$57 untracked).
+- [x] **T100: Token cost mismatch investigation.** Resolved 2026-05-08. Proxy run rate ($218/d) reconciles with billing. Gaps: streaming parse failures (fixed T103) + stale example config (fixed).
+- [x] **T101: zstd compression.** Strip from Accept-Encoding. Commit 12ad3e3.
+- [x] **T103: Streaming usage parser.** Fixed cache double-counting + LiteLLM cost fallback. Commit 2575d0d.
 
 ## High
 
-- [x] **T101: zstd compression support.** Stripped `zstd` from forwarded `Accept-Encoding` so upstream picks gzip/br. Committed 12ad3e3.
 - [ ] **T102: Per-project header injection for stock clients.** Claude Code, Claude Desktop, and most MCPs do not send `X-Project` / `X-Task`. Without them, every CC session shows up as `consumer=claude-code` with no project. Options:
   - A localhost shim on a separate port that injects headers based on cwd / git branch.
   - A Claude Code hook that mutates outbound HTTP headers (if/when CC supports that).
   - A tiny PowerShell launcher for Windows CC that sets per-cwd env vars.
-- [x] **T103: Fix proxy.js streaming usage parser.** Fixed OpenAI-compat cache token math + LiteLLM cost header fallback. Committed 2575d0d.
+  - **Next step**: Investigate if Claude Code's `ANTHROPIC_BASE_URL` can include path segments or custom headers via env vars.
 
 ## Medium
 
-- [ ] T104: Spike detection / alerting. Dashboard shows trends but nothing fires when daily spend jumps >Nx 7-day average.
-- [ ] T105: Cost-report reconciliation script — diff Anthropic's `/v1/organizations/cost_report` against `usage.db` for the same window; report gaps.
-- [ ] T106: Data-driven consumer enforcement. Move stack-specific consumer rewrite logic (e.g. flipping `ANTHROPIC_BASE_URL` between proxy and direct in client settings.json files) from external scripts into a generic mechanism configurable in `watchdog.conf`.
-- [ ] T107: Dashboard: spike chart, top-N expensive operations, per-project leaderboard once T102 lands.
-- [ ] T108: Publish.json multi-account support — allow pushing to both grobomo (public) and tmemu (private backup) from one `git push origin`.
+- [ ] T104: Spike detection / alerting. Dashboard shows trends but nothing fires when daily spend jumps >Nx 7-day average. **Next step**: add a cron-driven check in `watchdog.sh` that queries `usage.db` for today vs 7d avg.
+- [ ] T105: Cost-report reconciliation script — diff Anthropic's `/v1/organizations/cost_report` against `usage.db` for the same window; report gaps. **Blocker**: need Anthropic admin API key with billing scope.
+- [ ] T106: Data-driven consumer enforcement. Move stack-specific consumer rewrite logic into a generic mechanism configurable in `watchdog.conf`. **Depends on**: T102 (per-project headers).
+- [ ] T107: Dashboard: spike chart, top-N expensive operations, per-project leaderboard. **Depends on**: T102.
+- [ ] T108: Publish.json multi-account support — allow pushing to both grobomo (public) and tmemu (private backup). **Note**: stale tmemu pushurl was the original attempt at this; needs proper multi-remote design in `gh_auto`.
 
 ## Low / Backlog
 
