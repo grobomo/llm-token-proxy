@@ -169,6 +169,10 @@ const STRIP_RESPONSE_HEADERS = new Set([
 ]);
 
 app.all('/v1/*', async (req, res) => {
+  if (shuttingDown) {
+    res.set('Retry-After', '2');
+    return res.status(503).json({ error: 'shutting_down', retry_after: 2 });
+  }
   const startTime  = Date.now();
   const consumer   = detectConsumer(req);
   const project    = req.headers['x-project'] ? String(req.headers['x-project']) : null;
@@ -471,20 +475,45 @@ app.use((req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Graceful shutdown
+// Graceful shutdown — drain in-flight requests before exiting
 // ---------------------------------------------------------------------------
-function shutdown() {
-  log('info', 'Shutting down...');
-  db.close();
-  process.exit(0);
+let server;
+let shuttingDown = false;
+
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  log('info', `${signal} received — draining in-flight requests (5s max)...`);
+
+  // Stop accepting new connections
+  if (server) server.close();
+
+  // Reject new requests with 503 + Retry-After during drain
+  const drainTimeout = setTimeout(() => {
+    log('info', 'Drain timeout — forcing exit');
+    db.close();
+    process.exit(0);
+  }, 5000);
+  drainTimeout.unref();
+
+  // If server closes cleanly (all connections done), exit immediately
+  if (server) {
+    server.on('close', () => {
+      clearTimeout(drainTimeout);
+      log('info', 'All connections drained — clean exit');
+      db.close();
+      process.exit(0);
+    });
+  }
 }
-process.on('SIGTERM', shutdown);
-process.on('SIGINT',  shutdown);
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT',  () => shutdown('SIGINT'));
+
 
 // ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
-app.listen(PORT, BIND, () => {
+server = app.listen(PORT, BIND, () => {
   log('info', `Token Proxy listening on http://${BIND}:${PORT}`);
   if (UPSTREAMS.length > 0) {
     for (const u of UPSTREAMS) {
