@@ -191,6 +191,11 @@ app.all('/v1/*', async (req, res) => {
       forwardHeaders[k] = v;
     }
   }
+  // Strip zstd from accept-encoding — neither undici nor the proxy can decode it.
+  if (forwardHeaders['accept-encoding']) {
+    forwardHeaders['accept-encoding'] = forwardHeaders['accept-encoding']
+      .split(',').map(s => s.trim()).filter(s => !s.startsWith('zstd')).join(', ') || 'gzip, deflate, br';
+  }
 
   // ---- Parse request body ----
   let requestBody = req.body;   // Buffer from express.raw()
