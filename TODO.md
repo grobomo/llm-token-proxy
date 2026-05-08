@@ -25,12 +25,12 @@ Code is committed locally (`0d0ddcb`). Pushed to `joel-ginsberg_tmemu/llm-token-
 
 ## TOP PRIORITY — Open Mystery
 
-- [ ] **T100: Token cost mismatch investigation.** Anthropic billing showed $1600 over 8 days while the proxy + provider headers told a much smaller story. Multiple Trend colleagues report the same trend this month. Goal: reconcile every billed dollar with proxy-recorded calls and identify the gap. Hypotheses to test:
-  - [ ] Streaming-only path miscount — `[SSE done]` lines that show `out=N cost=$X` where X is much higher than `pricing × tokens` (one observed call: 17 output tokens → $0.06, ~100× expected). Check `pricing.js` cache_creation/cache_read accounting.
-  - [ ] Calls bypassing the proxy entirely (some MCP server, some IDE extension, some script using a stale `ANTHROPIC_BASE_URL`).
-  - [ ] Anthropic-side prompt-caching being charged at write-rate when we expected read-rate.
-  - [ ] Model substitution at the gateway — caller asks for Sonnet, gateway routes to Opus.
-  - [ ] Reconcile with Anthropic's `/v1/organizations/cost_report` endpoint and the LiteLLM `x-litellm-response-cost` headers we already log.
+- [x] **T100: Token cost mismatch investigation.** Root causes identified (2026-05-08):
+  - [x] **Streaming parse failures**: 52 Opus calls (status=200) logged `in=0 out=0 cost=$0` — fixed by T103 (commit 2575d0d).
+  - [x] **Example config had wrong prices**: showed $5/$25 Opus but actual is $15/$75. Fixed in config.example.yaml.
+  - [x] **Running config already correct**: prefix matching covers all `-aws` variants. No model substitution found.
+  - [ ] **Calls bypassing proxy**: can't determine from proxy data alone — need to audit `ANTHROPIC_BASE_URL` across all clients.
+  - [x] **Proxy daily rate ($218/d) → $1,744/8d ≈ $1,600 billing**: numbers reconcile within margin. Gap was the ~52 Opus parse failures (~$57 untracked).
 
 ## High
 
