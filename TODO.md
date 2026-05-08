@@ -33,6 +33,14 @@ Published to https://github.com/grobomo/llm-token-proxy (public). All commits pu
 - [ ] T107: Dashboard: spike chart, top-N expensive operations, per-project leaderboard. **Unblocked** — T102 complete, per-project data now flowing. Ready to start.
 - [ ] T108: Publish.json multi-account support — allow pushing to both grobomo (public) and tmemu (private backup). **Blocked**: pending grobomo/openclaw setup + tmemu scope audit.
 
+## Medium (New)
+
+- [ ] T114: Cost optimization — reduce daily spend from $189/day. Opportunities:
+  - Fewer session restarts → save $10-20/day on cache_write ($18.75/M)
+  - Route routine tasks to Sonnet ($3/$15) instead of Opus ($15/$75) → save $50-80/day
+  - Session persistence / longer sessions → fewer fresh cache writes
+  - Tracked in `scripts/enforce-routing.js` findings
+
 ## Low / Backlog
 
 - [ ] T109: Request dedup / cache layer (return cached identical-prompt responses without an upstream round-trip).
