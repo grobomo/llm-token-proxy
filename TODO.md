@@ -6,19 +6,19 @@ Code is committed locally (`0d0ddcb`). Pushed to `joel-ginsberg_tmemu/llm-token-
 
 ### Immediate Blockers
 
-- [ ] **FIX: grobomo gh keyring token authenticates as joel-ginsberg_tmemu (EMU).**
-  Both `gh auth token -u grobomo` and `gh auth token -u joel-ginsberg_tmemu` resolve to the same EMU identity via `/user` API. Running `gh_auto repo create grobomo/llm-token-proxy --public` fails with `Enterprise Managed User cannot access this content (createRepository)`. Existing grobomo repos ARE public (verified via API), so the account CAN have public repos — just the stored token is wrong.
-  **Fix**: re-auth grobomo via `gh auth login -h github.com` while logged in as grobomo in browser. Or create the repo manually via web UI.
-- [ ] **FIX: `gh_auto repo create --source=. --push` says "not a git repository" even after `git init`.**
-  Cause unknown. Git operations work (commit, log, push to explicit URL all succeed). Only `gh repo create --source=.` fails this check. Workaround: create repo via API/web, then `gh_auto push`.
-- [ ] **CLEANUP: delete accidental `joel-ginsberg_tmemu/llm-token-proxy` repo** (created during debug; token lacks `delete_repo` scope — delete via web UI).
+- [x] **FIX: grobomo gh keyring token authenticates as joel-ginsberg_tmemu (EMU).**
+  **Root cause (2026-05-08):** `gh` v2.57+ ignores `GH_TOKEN` env var when keyring auth is active — it always uses the "active account." `gh_auto` was setting `GH_TOKEN` correctly but `gh` didn't care.
+  **Fix applied:** Updated `gh_auto` to run `gh auth switch --user $ACCOUNT` before each command.
+- [x] **FIX: `gh_auto repo create --source=. --push` says "not a git repository" even after `git init`.**
+  Workaround used: create repo via API (`gh_auto api user/repos -X POST`), then `gh_auto push`.
+- [x] **CLEANUP: delete accidental `joel-ginsberg_tmemu/llm-token-proxy` repo** — repo does not exist (404); either never created successfully or already deleted.
 
-### Immediate Tasks (Once Auth Fixed)
+### Immediate Tasks
 
-- [ ] Create `grobomo/llm-token-proxy` (public, empty) on GitHub
-- [ ] `cd ~/Documents/ProjectsCL1/_grobomo/llm-token-proxy && gh_auto push origin main`
-- [ ] Trigger secret-scan GitHub Action on push; verify passes
-- [ ] Set up git local config: `user.name=grobomo`, `user.email=grobomo@users.noreply.github.com`
+- [x] Create `grobomo/llm-token-proxy` (public, empty) on GitHub — done 2026-05-08
+- [x] `gh_auto push origin main` — pushed commit 18b556c
+- [x] Trigger secret-scan GitHub Action on push; verify passes — conclusion: success
+- [x] Set up git local config: `user.name=grobomo`, `user.email=grobomo@users.noreply.github.com`
 - [ ] Also create `grobomo/openclaw` (private) and push openclaw mirror (no customer data found; Teams team_ids are TM-internal but not customer data — user approved for personal portable backup)
 
 ---
@@ -34,14 +34,12 @@ Code is committed locally (`0d0ddcb`). Pushed to `joel-ginsberg_tmemu/llm-token-
 
 ## High
 
-- [ ] **T101: zstd compression support.** Claude Code Windows sends `Accept-Encoding: gzip, deflate, br, zstd`. Today neither undici nor curl `--compressed` decode zstd. If api.anthropic.com ever serves zstd, the proxy will pass it through with broken header semantics. Either:
-  - Strip `zstd` from the forwarded `Accept-Encoding` so upstream picks gzip/br, OR
-  - Add zstd decompression on the proxy side.
+- [x] **T101: zstd compression support.** Stripped `zstd` from forwarded `Accept-Encoding` so upstream picks gzip/br. Committed 12ad3e3.
 - [ ] **T102: Per-project header injection for stock clients.** Claude Code, Claude Desktop, and most MCPs do not send `X-Project` / `X-Task`. Without them, every CC session shows up as `consumer=claude-code` with no project. Options:
   - A localhost shim on a separate port that injects headers based on cwd / git branch.
   - A Claude Code hook that mutates outbound HTTP headers (if/when CC supports that).
   - A tiny PowerShell launcher for Windows CC that sets per-cwd env vars.
-- [ ] **T103: Fix proxy.js streaming usage parser.** Many RDsec responses show `in=undefined out=undefined cost=$0` — the OpenAI-compat streaming shape varies across providers. Need to handle all variants and fall back to response-header values (`x-litellm-response-cost`, `x-litellm-key-spend`).
+- [x] **T103: Fix proxy.js streaming usage parser.** Fixed OpenAI-compat cache token math + LiteLLM cost header fallback. Committed 2575d0d.
 
 ## Medium
 
