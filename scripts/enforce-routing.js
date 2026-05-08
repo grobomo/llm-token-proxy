@@ -25,19 +25,18 @@ const DB_PATH    = process.env.USAGE_DB || path.resolve(SCRIPT_DIR, '../usage.db
 const RULES_PATH = path.resolve(SCRIPT_DIR, '../data/enforcement-rules.json');
 
 const DEFAULT_RULES = {
-  prefer_upstream: {
-    description: "Route Opus calls through RDsec (JWT auth) instead of direct Anthropic (sk-ant-) — 5-10x cheaper",
-    models: ["claude-opus", "claude-4.6-opus", "claude-opus-4-6", "claude-opus-4-7"],
-    preferred_upstream: "rdsec",
-    expensive_upstream: "anthropic",
+  flag_high_cache_writers: {
+    description: "Flag consumers with high cache_write per call (new sessions are expensive at $18.75/M)",
+    cache_write_threshold_per_call: 5000,
+    min_daily_cost: 5.00,
   },
   flag_unknown_consumers: {
     description: "Flag unidentified consumers spending > $1/day for investigation",
     threshold_daily_usd: 1.00,
   },
-  flag_old_clients: {
-    description: "Flag old Claude CLI versions using expensive routes",
-    expensive_ua_patterns: ["claude-cli/2.1.77"],
+  flag_untagged_projects: {
+    description: "Flag calls without X-Project header for attribution",
+    threshold_daily_usd: 5.00,
   },
 };
 
@@ -59,50 +58,34 @@ function loadRules() {
 function analyzeRouting(db, rules) {
   const findings = [];
 
-  // 1. Detect Opus calls on expensive upstream
-  const routingRule = rules.prefer_upstream;
-  if (routingRule) {
-    const modelPatterns = routingRule.models.map(m => `model LIKE '${m}%'`).join(' OR ');
-    const expensive = db.prepare(`
-      SELECT upstream, user_agent, COUNT(*) as calls, SUM(estimated_cost_usd) as cost,
-             AVG(estimated_cost_usd) as avg_cost
+  // 1. Flag high cache writers (new sessions = expensive cache_write at $18.75/M)
+  const cacheRule = rules.flag_high_cache_writers;
+  if (cacheRule) {
+    const highCW = db.prepare(`
+      SELECT user_agent, consumer, COUNT(*) as calls, SUM(estimated_cost_usd) as cost,
+             AVG(cache_write_tokens) as avg_cw, SUM(cache_write_tokens) as total_cw
       FROM usage_log
       WHERE timestamp >= strftime('%Y-%m-%dT00:00:00Z', 'now', '-1 day')
-        AND upstream = '${routingRule.expensive_upstream}'
-        AND (${modelPatterns})
         AND estimated_cost_usd > 0
-      GROUP BY upstream, user_agent
-      ORDER BY cost DESC
-    `).all();
+        AND cache_write_tokens > 0
+      GROUP BY user_agent, consumer
+      HAVING avg_cw > ? AND cost > ?
+      ORDER BY total_cw DESC
+    `).all(cacheRule.cache_write_threshold_per_call, cacheRule.min_daily_cost);
 
-    const preferred = db.prepare(`
-      SELECT AVG(estimated_cost_usd) as avg_cost
-      FROM usage_log
-      WHERE timestamp >= strftime('%Y-%m-%dT00:00:00Z', 'now', '-1 day')
-        AND upstream = '${routingRule.preferred_upstream}'
-        AND (${modelPatterns})
-        AND estimated_cost_usd > 0
-    `).get();
-
-    const preferredAvg = preferred?.avg_cost || 0.03;
-
-    for (const row of expensive) {
-      const savings = (row.avg_cost - preferredAvg) * row.calls;
-      if (savings > 0.50) {
-        findings.push({
-          type: 'expensive_upstream',
-          severity: savings > 50 ? 'high' : savings > 10 ? 'medium' : 'low',
-          user_agent: row.user_agent,
-          upstream: row.upstream,
-          calls: row.calls,
-          cost: parseFloat(row.cost.toFixed(2)),
-          avg_cost_per_call: parseFloat(row.avg_cost.toFixed(4)),
-          preferred_upstream: routingRule.preferred_upstream,
-          preferred_avg_cost: parseFloat(preferredAvg.toFixed(4)),
-          potential_daily_savings: parseFloat(savings.toFixed(2)),
-          fix: `Route this client through ${routingRule.preferred_upstream} by switching to JWT auth token`,
-        });
-      }
+    for (const row of highCW) {
+      const cwCost = (row.total_cw / 1_000_000) * 18.75;
+      findings.push({
+        type: 'high_cache_write',
+        severity: cwCost > 30 ? 'high' : cwCost > 10 ? 'medium' : 'low',
+        user_agent: row.user_agent,
+        consumer: row.consumer,
+        calls: row.calls,
+        total_cost: parseFloat(row.cost.toFixed(2)),
+        cache_write_cost: parseFloat(cwCost.toFixed(2)),
+        avg_cache_write_per_call: Math.round(row.avg_cw),
+        fix: 'Reduce session restarts (each creates fresh cache). Consider longer sessions or session persistence.',
+      });
     }
   }
 
@@ -114,7 +97,7 @@ function analyzeRouting(db, rules) {
              GROUP_CONCAT(DISTINCT user_agent) as agents
       FROM usage_log
       WHERE timestamp >= strftime('%Y-%m-%dT00:00:00Z', 'now', '-1 day')
-        AND consumer IN ('unknown', 'openclaw')
+        AND consumer IN ('unknown')
         AND estimated_cost_usd > 0
       GROUP BY consumer
       HAVING cost > ?
@@ -128,39 +111,34 @@ function analyzeRouting(db, rules) {
         calls: row.calls,
         cost: parseFloat(row.cost.toFixed(2)),
         user_agents: row.agents,
-        fix: 'Set X-Consumer header or configure ANTHROPIC_CUSTOM_HEADERS in client',
+        fix: 'Identify source and set X-Consumer header',
       });
     }
   }
 
-  // 3. Flag old client versions on expensive paths
-  const oldClientRule = rules.flag_old_clients;
-  if (oldClientRule) {
-    for (const pattern of oldClientRule.expensive_ua_patterns) {
-      const old = db.prepare(`
-        SELECT user_agent, upstream, COUNT(*) as calls, SUM(estimated_cost_usd) as cost,
-               AVG(estimated_cost_usd) as avg_cost
-        FROM usage_log
-        WHERE timestamp >= strftime('%Y-%m-%dT00:00:00Z', 'now', '-1 day')
-          AND user_agent LIKE ?
-          AND estimated_cost_usd > 0
-        GROUP BY user_agent, upstream
-      `).all(`%${pattern}%`);
+  // 3. Flag untagged projects (calls without X-Project header)
+  const untaggedRule = rules.flag_untagged_projects;
+  if (untaggedRule) {
+    const untagged = db.prepare(`
+      SELECT consumer, COUNT(*) as calls, SUM(estimated_cost_usd) as cost
+      FROM usage_log
+      WHERE timestamp >= strftime('%Y-%m-%dT00:00:00Z', 'now', '-1 day')
+        AND project IS NULL
+        AND estimated_cost_usd > 0
+      GROUP BY consumer
+      HAVING cost > ?
+      ORDER BY cost DESC
+    `).all(untaggedRule.threshold_daily_usd);
 
-      for (const row of old) {
-        if (row.cost > 1) {
-          findings.push({
-            type: 'old_client_version',
-            severity: row.cost > 50 ? 'high' : 'medium',
-            user_agent: row.user_agent,
-            upstream: row.upstream,
-            calls: row.calls,
-            cost: parseFloat(row.cost.toFixed(2)),
-            avg_cost_per_call: parseFloat(row.avg_cost.toFixed(4)),
-            fix: 'Update Claude CLI or reconfigure to use RDsec JWT token',
-          });
-        }
-      }
+    for (const row of untagged) {
+      findings.push({
+        type: 'untagged_project',
+        severity: row.cost > 50 ? 'high' : 'medium',
+        consumer: row.consumer,
+        calls: row.calls,
+        cost: parseFloat(row.cost.toFixed(2)),
+        fix: 'Run setup-projects.js or add ANTHROPIC_CUSTOM_HEADERS to project .claude/settings.json',
+      });
     }
   }
 
@@ -169,29 +147,8 @@ function analyzeRouting(db, rules) {
 
 function applyFixes(findings, opts) {
   const actions = [];
-  const ccSettings = path.join(HOME, '.claude/settings.json');
-
   for (const f of findings) {
-    if (f.type === 'expensive_upstream' && f.user_agent?.includes('claude-cli')) {
-      // The fix: ensure the user-level .claude/settings.json uses the RDsec JWT token
-      // Check if it's already using the right token
-      if (fs.existsSync(ccSettings)) {
-        const settings = JSON.parse(fs.readFileSync(ccSettings, 'utf-8'));
-        const currentToken = settings?.env?.ANTHROPIC_AUTH_TOKEN || '';
-        if (currentToken.startsWith('eyJ')) {
-          actions.push({ finding: f, action: 'already_correct', note: 'Settings already use JWT token' });
-          continue;
-        }
-        if (opts.dryRun) {
-          actions.push({ finding: f, action: 'would_fix', note: 'Would update ANTHROPIC_AUTH_TOKEN to JWT in ' + ccSettings });
-        } else if (opts.fix) {
-          // This would need the actual JWT — we don't store it here, just flag it
-          actions.push({ finding: f, action: 'manual_required', note: 'Update ANTHROPIC_AUTH_TOKEN in ' + ccSettings + ' to RDsec JWT' });
-        }
-      }
-    } else {
-      actions.push({ finding: f, action: 'report_only', note: f.fix });
-    }
+    actions.push({ finding: f, action: 'report_only', note: f.fix });
   }
   return actions;
 }
