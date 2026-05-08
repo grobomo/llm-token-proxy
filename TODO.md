@@ -2,9 +2,10 @@
 
 ## Session State (2026-05-08, end of session)
 
-Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `ed496cb`.
+Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `c5e6b86`.
 `gh_auto` fixed: uses inline credential helper for git, active-account switch/restore for gh.
 `gh-auto-gate` hook active in WSL — blocks raw `gh`/`git push`.
+14 projects auto-configured with `X-Project` headers via `scripts/setup-projects.js`.
 
 ### Remaining Setup
 
@@ -21,15 +22,15 @@ Published to https://github.com/grobomo/llm-token-proxy (public). All commits pu
 
 ## High
 
-- [x] **T102: Per-project header injection.** Solution: `ANTHROPIC_CUSTOM_HEADERS` env var in `.claude/settings.json`. Proxy captures `X-Project` + `X-Claude-Code-Session-Id`. Schema v4 adds `session_id` column. Commit f7f8b8e.
+- [x] **T102: Per-project header injection.** Solution: `ANTHROPIC_CUSTOM_HEADERS` env var in `.claude/settings.json`. Proxy captures `X-Project` + `X-Claude-Code-Session-Id`. Schema v4 adds `session_id` column. Commit f7f8b8e. Auto-setup script (c5e6b86) configured 14 projects.
 
 ## Medium
 
 - [x] T104: Spike detection / alerting. Implemented `scripts/spike-detect.js` (commit 4fe7adf). Compares today vs 7d rolling avg, exits 1 on spike, writes `~/.token-proxy-spike-alert`. **Remaining**: wire into cron (recommended: every 30 min).
 - [x] T105: Cost-report reconciliation script. `scripts/reconcile-costs.js` — accepts `--report <file>` or `--api` with `ANTHROPIC_ADMIN_KEY`. Commit f73bd84.
-- [ ] T106: Data-driven consumer enforcement. Move stack-specific consumer rewrite logic into a generic mechanism configurable in `watchdog.conf`. **Depends on**: T102 (per-project headers).
-- [ ] T107: Dashboard: spike chart, top-N expensive operations, per-project leaderboard. **Depends on**: T102.
-- [ ] T108: Publish.json multi-account support — allow pushing to both grobomo (public) and tmemu (private backup). **Note**: stale tmemu pushurl was the original attempt at this; needs proper multi-remote design in `gh_auto`.
+- [ ] T106: Data-driven consumer enforcement. Move stack-specific consumer rewrite logic into a generic mechanism configurable in `watchdog.conf`. **Unblocked** — T102 complete, per-project data now flowing.
+- [ ] T107: Dashboard: spike chart, top-N expensive operations, per-project leaderboard. **Unblocked** — T102 complete, per-project data now flowing.
+- [ ] T108: Publish.json multi-account support — allow pushing to both grobomo (public) and tmemu (private backup). **Blocked**: pending grobomo/openclaw setup + tmemu scope audit.
 
 ## Low / Backlog
 
