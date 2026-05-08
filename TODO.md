@@ -10,8 +10,8 @@ Published to https://github.com/grobomo/llm-token-proxy (public). All commits pu
 ### Remaining Setup
 
 - [x] **Restart the running proxy** — deployed via `safe-restart.sh`, schema v4 active, e2e verified.
-- [ ] Create `grobomo/openclaw` (private) and push openclaw mirror. Prereqs: verify no customer data, user approved personal backup.
-- [ ] Audit all clients for `ANTHROPIC_BASE_URL` pointing direct (bypassing proxy) — T100 remaining gap.
+- [x] Create `grobomo/openclaw` (private) and push openclaw mirror — all 14 branches pushed. Added `.github/publish.json`.
+- [x] Audit all clients for `ANTHROPIC_BASE_URL` pointing direct — no active bypasses found. Only archived backups reference direct URLs.
 
 ---
 
