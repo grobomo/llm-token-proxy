@@ -173,6 +173,7 @@ app.all('/v1/*', async (req, res) => {
   const consumer   = detectConsumer(req);
   const project    = req.headers['x-project'] ? String(req.headers['x-project']) : null;
   const task       = req.headers['x-task']    ? String(req.headers['x-task'])    : null;
+  const sessionId  = req.headers['x-claude-code-session-id'] || null;
   const userAgent  = req.headers['user-agent'] ? String(req.headers['user-agent']).slice(0, 256) : null;
 
   // ---- Resolve upstream based on API key format ----
@@ -377,7 +378,7 @@ app.all('/v1/*', async (req, res) => {
         estimated_cost_usd: finalCost,
         duration_ms:        duration,
         http_status:        httpStatus,
-        project, task, user_agent: userAgent,
+        project, task, user_agent: userAgent, session_id: sessionId,
       });
       log('info', `[SSE done] consumer=${consumer} model=${model} upstream=${upstreamName} in=${usageFromStream.input_tokens} out=${usageFromStream.output_tokens} cache_r=${usageFromStream.cache_read_input_tokens || 0} cache_w=${usageFromStream.cache_creation_input_tokens || 0} cost=$${finalCost}${litellmCost != null && Math.abs(cost - litellmCost) > 0.001 ? ` (est=$${cost})` : ''} dur=${duration}ms`);
     } else {
@@ -390,7 +391,7 @@ app.all('/v1/*', async (req, res) => {
         estimated_cost_usd: fallbackCost,
         duration_ms: duration,
         http_status: httpStatus,
-        project, task, user_agent: userAgent,
+        project, task, user_agent: userAgent, session_id: sessionId,
       });
       if (fallbackCost > 0) {
         log('info', `[SSE done] consumer=${consumer} model=${model} upstream=${upstreamName} cost=$${fallbackCost} (from x-litellm-response-cost header) dur=${duration}ms`);
@@ -442,7 +443,7 @@ app.all('/v1/*', async (req, res) => {
       estimated_cost_usd: finalCost,
       duration_ms:        duration,
       http_status:        httpStatus,
-      project, task, user_agent: userAgent,
+      project, task, user_agent: userAgent, session_id: sessionId,
     });
     log('info', `[done] consumer=${consumer} model=${model} upstream=${upstreamName} in=${usageData.input_tokens} out=${usageData.output_tokens} cache_r=${usageData.cache_read_input_tokens || 0} cache_w=${usageData.cache_creation_input_tokens || 0} cost=$${finalCost}${litellmCost != null && Math.abs(cost - litellmCost) > 0.001 ? ` (est=$${cost})` : ''} dur=${duration}ms`);
   } else {
@@ -454,7 +455,7 @@ app.all('/v1/*', async (req, res) => {
       estimated_cost_usd: fallbackCost,
       duration_ms: duration,
       http_status: httpStatus,
-      project, task, user_agent: userAgent,
+      project, task, user_agent: userAgent, session_id: sessionId,
     });
     if (httpStatus >= 200 && httpStatus < 300) {
       log('debug', `[done] no usage data in response for consumer=${consumer} model=${model} upstream=${upstreamName} status=${httpStatus}${fallbackCost > 0 ? ` litellm_cost=$${fallbackCost}` : ''}`);

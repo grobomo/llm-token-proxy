@@ -68,6 +68,12 @@ function init(dbPath) {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_usage_task    ON usage_log (task)`);
     db.exec(`INSERT OR REPLACE INTO schema_version (version) VALUES (3)`);
   }
+  // Schema v4: session_id for per-session grouping (X-Claude-Code-Session-Id)
+  if (!colNames.has('session_id')) {
+    db.exec(`ALTER TABLE usage_log ADD COLUMN session_id TEXT`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_usage_session ON usage_log (session_id)`);
+    db.exec(`INSERT OR REPLACE INTO schema_version (version) VALUES (4)`);
+  }
 
   return db;
 }
@@ -82,9 +88,9 @@ function logUsage(record) {
     INSERT INTO usage_log
       (consumer, model, upstream, input_tokens, output_tokens, cache_read_tokens,
        cache_write_tokens, estimated_cost_usd, duration_ms, http_status,
-       project, task, user_agent)
+       project, task, user_agent, session_id)
     VALUES
-      (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   stmt.run(
@@ -101,6 +107,7 @@ function logUsage(record) {
     record.project             || null,
     record.task                || null,
     record.user_agent          || null,
+    record.session_id          || null,
   );
 }
 

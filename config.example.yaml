@@ -52,3 +52,16 @@ dashboard:
 log:
   level: info               # info | debug | warn | error
   requests: true
+
+# --- Per-project attribution (T102) ---
+# Claude Code sends X-Project and X-Claude-Code-Session-Id headers when configured.
+# Add to each project's .claude/settings.json:
+#
+#   {
+#     "env": {
+#       "ANTHROPIC_CUSTOM_HEADERS": "X-Project: my-project-name"
+#     }
+#   }
+#
+# The proxy logs these automatically — no server-side config needed.
+# Query per-project spend: SELECT project, SUM(estimated_cost_usd) FROM usage_log GROUP BY project
