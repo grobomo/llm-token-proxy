@@ -250,7 +250,12 @@ app.all('/v1/*', async (req, res) => {
   const upCE            = upstreamRes.headers.get('content-encoding') || '-';
   const upCL            = upstreamRes.headers.get('content-length')   || '-';
   const upTE            = upstreamRes.headers.get('transfer-encoding')|| '-';
-  log('info', `[upstream] status=${httpStatus} ce=${upCE} cl=${upCL} te=${upTE} ct="${contentType}"`);
+
+  // Capture LiteLLM cost headers as fallback when stream parser can't extract usage
+  const litellmCost    = parseFloat(upstreamRes.headers.get('x-litellm-response-cost') || '') || null;
+  const litellmSpend   = upstreamRes.headers.get('x-litellm-key-spend') || null;
+
+  log('info', `[upstream] status=${httpStatus} ce=${upCE} cl=${upCL} te=${upTE} ct="${contentType}"${litellmCost ? ` litellm_cost=$${litellmCost}` : ''}`);
 
   // ---- Forward response headers ----
   res.status(httpStatus);
@@ -322,14 +327,20 @@ app.all('/v1/*', async (req, res) => {
               }
               // OpenAI-compatible streaming (RDsec): usage carried on a chunk with `choices`.
               // Normalize OpenAI field names → Anthropic so pricing.js works.
+              // IMPORTANT: OpenAI's `prompt_tokens` is the TOTAL (includes cached).
+              // Anthropic's `input_tokens` is NON-cached only. Subtract cache tokens
+              // to avoid double-charging in pricing.js.
               if (eventData.usage && Array.isArray(eventData.choices)) {
                 const u = eventData.usage;
+                const cacheRead  = u.cache_read_input_tokens     ?? u.prompt_tokens_details?.cached_tokens          ?? 0;
+                const cacheWrite = u.cache_creation_input_tokens ?? u.prompt_tokens_details?.cache_creation_tokens ?? 0;
+                const totalInput = u.prompt_tokens ?? (usageFromStream?.input_tokens || 0);
                 usageFromStream = {
                   ...usageFromStream,
-                  input_tokens:  u.prompt_tokens     != null ? u.prompt_tokens     : (usageFromStream?.input_tokens  || 0),
-                  output_tokens: u.completion_tokens != null ? u.completion_tokens : (usageFromStream?.output_tokens || 0),
-                  cache_read_input_tokens:     u.cache_read_input_tokens     ?? u.prompt_tokens_details?.cached_tokens          ?? (usageFromStream?.cache_read_input_tokens     || 0),
-                  cache_creation_input_tokens: u.cache_creation_input_tokens ?? u.prompt_tokens_details?.cache_creation_tokens ?? (usageFromStream?.cache_creation_input_tokens || 0),
+                  input_tokens:                Math.max(0, totalInput - cacheRead - cacheWrite),
+                  output_tokens:               u.completion_tokens != null ? u.completion_tokens : (usageFromStream?.output_tokens || 0),
+                  cache_read_input_tokens:     cacheRead,
+                  cache_creation_input_tokens: cacheWrite,
                 };
               }
             } catch {
@@ -348,6 +359,8 @@ app.all('/v1/*', async (req, res) => {
     const duration = Date.now() - startTime;
     if (usageFromStream) {
       const cost = pricing.calculateCost(model, usageFromStream);
+      // Prefer LiteLLM's authoritative cost when available; use our estimate as fallback
+      const finalCost = litellmCost != null ? litellmCost : cost;
       db.logUsage({
         consumer,
         model,
@@ -356,24 +369,29 @@ app.all('/v1/*', async (req, res) => {
         output_tokens:      usageFromStream.output_tokens             || 0,
         cache_read_tokens:  usageFromStream.cache_read_input_tokens   || 0,
         cache_write_tokens: usageFromStream.cache_creation_input_tokens || 0,
-        estimated_cost_usd: cost,
+        estimated_cost_usd: finalCost,
         duration_ms:        duration,
         http_status:        httpStatus,
         project, task, user_agent: userAgent,
       });
-      log('info', `[SSE done] consumer=${consumer} model=${model} upstream=${upstreamName} in=${usageFromStream.input_tokens} out=${usageFromStream.output_tokens} cost=$${cost} dur=${duration}ms`);
+      log('info', `[SSE done] consumer=${consumer} model=${model} upstream=${upstreamName} in=${usageFromStream.input_tokens} out=${usageFromStream.output_tokens} cache_r=${usageFromStream.cache_read_input_tokens || 0} cache_w=${usageFromStream.cache_creation_input_tokens || 0} cost=$${finalCost}${litellmCost != null && Math.abs(cost - litellmCost) > 0.001 ? ` (est=$${cost})` : ''} dur=${duration}ms`);
     } else {
-      // Log what we can even if we couldn't parse usage
+      // Fallback: use LiteLLM response-cost header if stream parser found nothing
+      const fallbackCost = litellmCost || 0;
       db.logUsage({
         consumer, model,
         upstream: upstreamName,
         input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0,
-        estimated_cost_usd: 0,
+        estimated_cost_usd: fallbackCost,
         duration_ms: duration,
         http_status: httpStatus,
         project, task, user_agent: userAgent,
       });
-      log('warn', `[SSE done] could not parse usage for consumer=${consumer} model=${model} upstream=${upstreamName}`);
+      if (fallbackCost > 0) {
+        log('info', `[SSE done] consumer=${consumer} model=${model} upstream=${upstreamName} cost=$${fallbackCost} (from x-litellm-response-cost header) dur=${duration}ms`);
+      } else {
+        log('warn', `[SSE done] no usage data for consumer=${consumer} model=${model} upstream=${upstreamName} dur=${duration}ms`);
+      }
     }
 
     return;
@@ -407,6 +425,7 @@ app.all('/v1/*', async (req, res) => {
 
   if (usageData) {
     const cost = pricing.calculateCost(model, usageData);
+    const finalCost = litellmCost != null ? litellmCost : cost;
     db.logUsage({
       consumer,
       model,
@@ -415,24 +434,25 @@ app.all('/v1/*', async (req, res) => {
       output_tokens:      usageData.output_tokens             || 0,
       cache_read_tokens:  usageData.cache_read_input_tokens   || 0,
       cache_write_tokens: usageData.cache_creation_input_tokens || 0,
-      estimated_cost_usd: cost,
+      estimated_cost_usd: finalCost,
       duration_ms:        duration,
       http_status:        httpStatus,
       project, task, user_agent: userAgent,
     });
-    log('info', `[done] consumer=${consumer} model=${model} upstream=${upstreamName} in=${usageData.input_tokens} out=${usageData.output_tokens} cost=$${cost} dur=${duration}ms`);
+    log('info', `[done] consumer=${consumer} model=${model} upstream=${upstreamName} in=${usageData.input_tokens} out=${usageData.output_tokens} cache_r=${usageData.cache_read_input_tokens || 0} cache_w=${usageData.cache_creation_input_tokens || 0} cost=$${finalCost}${litellmCost != null && Math.abs(cost - litellmCost) > 0.001 ? ` (est=$${cost})` : ''} dur=${duration}ms`);
   } else {
+    const fallbackCost = litellmCost || 0;
     db.logUsage({
       consumer, model,
       upstream: upstreamName,
       input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0,
-      estimated_cost_usd: 0,
+      estimated_cost_usd: fallbackCost,
       duration_ms: duration,
       http_status: httpStatus,
       project, task, user_agent: userAgent,
     });
     if (httpStatus >= 200 && httpStatus < 300) {
-      log('debug', `[done] no usage data in response for consumer=${consumer} model=${model} upstream=${upstreamName} status=${httpStatus}`);
+      log('debug', `[done] no usage data in response for consumer=${consumer} model=${model} upstream=${upstreamName} status=${httpStatus}${fallbackCost > 0 ? ` litellm_cost=$${fallbackCost}` : ''}`);
     }
   }
 });
