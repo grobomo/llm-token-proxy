@@ -392,7 +392,7 @@ function renderChart(data) {
     const legend = models.slice(0, 6).map(m => `
       <div class="legend-item">
         <div class="legend-dot" style="background:${modelColors[m.model] || 'var(--accent)'}"></div>
-        <span>${shortModel(m.model)}</span>
+        <span>${esc(shortModel(m.model))}</span>
         <span class="legend-cost">${fmtCost(m.cost)}</span>
       </div>
     `).join('');
@@ -476,7 +476,7 @@ function renderBreakdown(data) {
   el.innerHTML = models.map((m, i) => `
     <div class="model-row">
       <div class="model-dot" style="background:${COLORS[i % COLORS.length]}"></div>
-      <span class="model-name">${shortModel(m.model)}</span>
+      <span class="model-name">${esc(shortModel(m.model))}</span>
       <span class="model-calls">${m.calls} calls</span>
       <span class="model-cost">${fmtCost(m.cost)}</span>
     </div>
@@ -645,7 +645,7 @@ async function loadJudge() {
 
     const gateRows = gates.map(g => `
       <div class="model-row">
-        <span class="model-name">${g.gate}</span>
+        <span class="model-name">${esc(g.gate)}</span>
         <span style="color:var(--green);font-size:12px">${g.allowed} allow</span>
         <span style="color:var(--red);font-size:12px">${g.blocked} block</span>
         <span class="model-calls">${g.avg_latency_ms}ms avg</span>
@@ -655,9 +655,9 @@ async function loadJudge() {
 
     const recentRows = recent.slice(0, 5).map(r => `
       <div class="model-row" style="font-size:11px">
-        <span style="color:${r.decision === 'allow' ? 'var(--green)' : 'var(--red)'}">${r.decision}</span>
-        <span class="model-name">${r.gate}</span>
-        <span style="color:var(--muted)">${r.reason?.slice(0, 50) || ''}</span>
+        <span style="color:${r.decision === 'allow' ? 'var(--green)' : 'var(--red)'}">${esc(r.decision)}</span>
+        <span class="model-name">${esc(r.gate)}</span>
+        <span style="color:var(--muted)">${esc(r.reason?.slice(0, 50) || '')}</span>
       </div>
     `).join('');
 
