@@ -16,6 +16,7 @@ cd llm-token-proxy/gates
 |------|-------|------|-----------|
 | `stop-analysis-gate.js` | Stop | blocking (continue/stop) | `~/.claude/hooks/stop-analysis.md` |
 | `post-tool-use-gate.js` | PostToolUse | observe-only (never blocks) | `~/.claude/hooks/post-tool-analysis.md` |
+| `pre-tool-verify-gate.js` | PreToolUse | observe-only (never blocks) | `~/.claude/hooks/pre-tool-verify.md` |
 
 ## How they work
 
@@ -35,8 +36,10 @@ All gates follow the same pattern:
 |------|----------|
 | `~/.claude/hooks/hook-log.jsonl` | All hook events (shared across gates) |
 | `~/.claude/hooks/tool-audit-decisions.jsonl` | PostToolUse decisions (effective/redundant/failed) |
+| `~/.claude/hooks/verify-decisions.jsonl` | PreToolUse verification suggestions |
 | `~/.claude/hooks/stop-analysis.md` | Last stop gate reasoning |
 | `~/.claude/hooks/post-tool-analysis.md` | Last tool audit reasoning |
+| `~/.claude/hooks/pre-tool-verify.md` | Last verification suggestion |
 
 ## Config
 
@@ -45,6 +48,7 @@ All gates follow the same pattern:
 | `STOP_RULES_PATH` | `~/.claude/proxy/stop-haiku-rules.yaml` | Stop gate rules |
 | `TOOL_AUDIT_RULES_PATH` | `~/.claude/proxy/tool-audit-rules.yaml` | Tool audit rules |
 | `TOOL_AUDIT_SAMPLE_RATE` | `0.3` | Fraction of tool calls to deep-audit (0.0-1.0) |
+| `VERIFY_RULES_PATH` | `~/.claude/proxy/verify-rules.yaml` | Pre-verify gate rules |
 | `LLM_PROXY_AUTH` | from `~/.claude/settings.json` | API key for proxy auth |
 
 ## Adding a new gate
