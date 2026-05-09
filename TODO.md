@@ -70,5 +70,5 @@ All systemd timers active: spike-detect (30min), watchdog (5min), daily-report (
 - [x] T110: 24h stability test — PASSED. 4 cycles, 32 checks, 0 failures. All endpoints healthy.
 - [ ] T111: Pluggable storage backend (Postgres) for multi-host deployments.
 - [x] T112: Pluggable alerting (Slack, webhook, email) — `lib/alert.js` implements log/slack/webhook. Wired into spike-detect.js. Config: `alerting.slack_webhook` + `alerting.webhook_url`. Set env vars or config.yaml to activate.
-- [ ] T113: Consider replacing custom proxy.js with LiteLLM proxy (same tech RDsec runs upstream). Battle-tested streaming/compression. Keep if per-project attribution is preserved.
+- [x] T113: Evaluated LiteLLM proxy — decided to keep custom proxy.js. LiteLLM lacks cache token tracking, hourly model charts, /judge endpoint, IP audit, model override rules. Our proxy has too much specialized tooling to replace. RDsec already uses LiteLLM upstream so we get its routing benefits without running it ourselves.
 - [x] T116: Custom domain `tokentracker.click` — LIVE with HTTPS. Cert expires 2026-08-07 (auto-renews). Login: password-only → `proxy1`. Admin: `admin`/`4dm1n!`.
