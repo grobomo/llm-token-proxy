@@ -546,6 +546,91 @@ describe('E2E: Token Proxy', { timeout: 30000 }, () => {
   });
 
   // =========================================================================
+  // Dashboard API endpoints (T141)
+  // =========================================================================
+
+  describe('/api/hourly-breakdown', () => {
+    it('returns hours array', async () => {
+      const { status, json } = await req('GET', '/api/hourly-breakdown');
+      assert.equal(status, 200);
+      assert.ok(Array.isArray(json.hours));
+    });
+
+    it('accepts range parameter', async () => {
+      const { status, json } = await req('GET', '/api/hourly-breakdown?range=7d');
+      assert.equal(status, 200);
+      assert.ok(Array.isArray(json.hours));
+    });
+
+    it('falls back to 24h for invalid range', async () => {
+      const { status, json } = await req('GET', '/api/hourly-breakdown?range=bogus');
+      assert.equal(status, 200);
+      assert.ok(Array.isArray(json.hours));
+    });
+  });
+
+  describe('/api/cost-breakdown', () => {
+    it('returns models array with totals', async () => {
+      const { status, json } = await req('GET', '/api/cost-breakdown');
+      assert.equal(status, 200);
+      assert.ok(Array.isArray(json.models));
+      assert.ok(typeof json.totals === 'object');
+      assert.ok(typeof json.totals.cost === 'number');
+      assert.ok(typeof json.totals.calls === 'number');
+    });
+
+    it('respects range=1h', async () => {
+      const { status, json } = await req('GET', '/api/cost-breakdown?range=1h');
+      assert.equal(status, 200);
+      assert.ok(Array.isArray(json.models));
+    });
+  });
+
+  describe('/api/project-costs', () => {
+    it('returns projects array', async () => {
+      const { status, json } = await req('GET', '/api/project-costs');
+      assert.equal(status, 200);
+      assert.ok(Array.isArray(json.projects));
+    });
+
+    it('respects range=30d', async () => {
+      const { status, json } = await req('GET', '/api/project-costs?range=30d');
+      assert.equal(status, 200);
+      assert.ok(Array.isArray(json.projects));
+    });
+  });
+
+  describe('/api/savings-potential', () => {
+    it('returns savings data', async () => {
+      const { status, json } = await req('GET', '/api/savings-potential');
+      assert.equal(status, 200);
+      assert.ok(Array.isArray(json.models));
+      assert.ok(typeof json.session_restarts === 'object');
+    });
+  });
+
+  describe('/api/daily-comparison', () => {
+    it('returns today vs yesterday comparison', async () => {
+      const { status, json } = await req('GET', '/api/daily-comparison');
+      assert.equal(status, 200);
+      assert.ok('today' in json);
+      assert.ok('yesterday' in json);
+      assert.ok(typeof json.today.cost === 'number');
+      assert.ok(typeof json.yesterday.cost === 'number');
+    });
+  });
+
+  describe('/api/cache-stats', () => {
+    it('returns cache statistics', async () => {
+      const { status, json } = await req('GET', '/api/cache-stats');
+      assert.equal(status, 200);
+      assert.ok(typeof json.entries === 'number');
+      assert.ok(typeof json.hits === 'number');
+      assert.ok(typeof json.misses === 'number');
+    });
+  });
+
+  // =========================================================================
   // 404 catch-all
   // =========================================================================
 
