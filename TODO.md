@@ -53,7 +53,7 @@ All systemd timers active: spike-detect (30min), watchdog (5min), daily-report (
   - Model override infrastructure ready (no safe targets identified).
   - Context-reset rule tightened: requires 2+ staleness signals (not just "long session"). Should reduce restarts from ~12/day to ~6-8/day, saving ~$10-14/day.
   - Remaining savings require architectural changes (session persistence, compaction) — out of scope for now.
-- [ ] T115: Per-project hourly bar chart — waiting for more projects to produce tagged data. Only `llm-token-proxy` tagged so far.
+- [x] T115: Per-project hourly bar chart — dashboard already shows per-project pie on hover via `/api/hourly-breakdown`. 83 projects now tagged (14 WSL + 69 Windows). Data flowing: llm-token-proxy (779 calls/24h).
 
 ## Medium (API Retry Integration)
 

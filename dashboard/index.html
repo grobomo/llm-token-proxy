@@ -297,6 +297,13 @@
   </div>
 </div>
 
+<div class="breakdown">
+  <div class="breakdown-card" style="grid-column: span 2">
+    <h3>Judge decisions — 24h</h3>
+    <div id="judge-panel"></div>
+  </div>
+</div>
+
 <script>
 const COLORS = ['#58a6ff','#3fb950','#d29922','#f85149','#db6d28','#a371f7','#79c0ff','#56d364','#e3b341','#ff7b72'];
 
@@ -561,15 +568,53 @@ async function loadHealth() {
   }
 }
 
+async function loadJudge() {
+  const el = document.getElementById('judge-panel');
+  try {
+    const r = await fetch('/api/judge-stats');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    const gates = d.by_gate || [];
+    const recent = d.recent || [];
+
+    if (gates.length === 0 && recent.length === 0) {
+      el.innerHTML = '<div class="empty-state" style="padding:12px">No judge decisions yet</div>';
+      return;
+    }
+
+    const gateRows = gates.map(g => `
+      <div class="model-row">
+        <span class="model-name">${g.gate}</span>
+        <span style="color:var(--green);font-size:12px">${g.allowed} allow</span>
+        <span style="color:var(--red);font-size:12px">${g.blocked} block</span>
+        <span class="model-calls">${g.avg_latency_ms}ms avg</span>
+        <span class="model-cost">${g.total} total</span>
+      </div>
+    `).join('');
+
+    const recentRows = recent.slice(0, 5).map(r => `
+      <div class="model-row" style="font-size:11px">
+        <span style="color:${r.decision === 'allow' ? 'var(--green)' : 'var(--red)'}">${r.decision}</span>
+        <span class="model-name">${r.gate}</span>
+        <span style="color:var(--muted)">${r.reason?.slice(0, 50) || ''}</span>
+      </div>
+    `).join('');
+
+    el.innerHTML = gateRows + (recentRows ? '<div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px"><div style="font-size:10px;color:var(--muted);margin-bottom:4px">RECENT</div>' + recentRows + '</div>' : '');
+  } catch { el.innerHTML = '<div class="empty-state" style="padding:12px">—</div>'; }
+}
+
 load();
 loadBreakdown();
 loadSavings();
 loadTrend();
+loadJudge();
 loadHealth();
 setInterval(load, 60000);
 setInterval(loadBreakdown, 60000);
 setInterval(loadSavings, 300000);
 setInterval(loadTrend, 120000);
+setInterval(loadJudge, 60000);
 setInterval(loadHealth, 15000);
 </script>
 </body>
