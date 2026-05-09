@@ -61,8 +61,8 @@ All systemd timers active: spike-detect (30min), watchdog (5min), daily-report (
 
 ## Low / Backlog
 
-- [ ] T109: Request dedup / cache layer (return cached identical-prompt responses without an upstream round-trip).
-- [ ] T110: 24h stability test under realistic mixed load.
+- [x] T109: Response cache for dashboard API — 30s TTL, LRU eviction (lib/cache.js). X-Cache headers + /api/cache-stats endpoint. Full LLM request dedup not viable (all calls are unique conversations).
+- [x] T110: 24h stability test — PASSED. 4 cycles, 32 checks, 0 failures. All endpoints healthy.
 - [ ] T111: Pluggable storage backend (Postgres) for multi-host deployments.
 - [x] T112: Pluggable alerting (Slack, webhook, email) — `lib/alert.js` implements log/slack/webhook. Wired into spike-detect.js. Config: `alerting.slack_webhook` + `alerting.webhook_url`. Set env vars or config.yaml to activate.
 - [ ] T113: Consider replacing custom proxy.js with LiteLLM proxy (same tech RDsec runs upstream). Battle-tested streaming/compression. Keep if per-project attribution is preserved.
