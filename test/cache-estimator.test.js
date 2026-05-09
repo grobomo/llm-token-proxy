@@ -87,15 +87,14 @@ describe('Cache Estimator', () => {
       assert.equal(result.output_tokens, 300);
     });
 
-    it('defaults to first-in-session when no sessionId provided', () => {
+    it('skips estimation when no sessionId (single-turn calls)', () => {
       const usage = { input_tokens: 1, output_tokens: 200 };
       const { usage: result, estimated } = estimateCacheTokens({
         usage, model: 'claude-opus-4-6', upstream: 'litellm', sessionId: null, queryDb: null,
       });
 
-      assert.equal(estimated, true);
-      assert.ok(result.cache_creation_input_tokens > 0);
-      assert.equal(result.cache_read_input_tokens, 0);
+      assert.equal(estimated, false);
+      assert.deepEqual(result, usage);
     });
 
     it('handles db query failure gracefully', () => {
