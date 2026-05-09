@@ -77,6 +77,43 @@ function resolveUpstream(req) {
 pricing.loadPricing(config.pricing);
 
 // ---------------------------------------------------------------------------
+// Model overrides — route specific patterns to cheaper models
+// ---------------------------------------------------------------------------
+const MODEL_OVERRIDES = (config.model_overrides || []).filter(r => r.enabled !== false);
+
+function resolveModelOverride(model, consumer, parsed) {
+  for (const rule of MODEL_OVERRIDES) {
+    const m = rule.match || {};
+    if (m.model && !matchGlob(m.model, model)) continue;
+    if (m.consumer && m.consumer !== consumer) continue;
+    if (m.no_cache && hasCache(parsed)) continue;
+    if (m.max_messages && Array.isArray(parsed.messages) && parsed.messages.length > m.max_messages) continue;
+    return rule;
+  }
+  return null;
+}
+
+function matchGlob(pattern, str) {
+  if (!pattern.includes('*')) return pattern === str;
+  const re = new RegExp('^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
+  return re.test(str);
+}
+
+function hasCache(parsed) {
+  if (Array.isArray(parsed.system)) {
+    if (parsed.system.some(s => s.cache_control)) return true;
+  }
+  if (Array.isArray(parsed.messages)) {
+    for (const msg of parsed.messages) {
+      if (Array.isArray(msg.content)) {
+        if (msg.content.some(c => c.cache_control)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
 // Database
 // ---------------------------------------------------------------------------
 db.init(config.db || path.resolve(__dirname, 'usage.db'));
@@ -207,23 +244,39 @@ app.all('/v1/*', async (req, res) => {
   let model       = 'unknown';
   let isStreaming  = false;
 
+  let originalModel = null;
+
   if (requestBody && requestBody.length > 0) {
     try {
       const parsed = JSON.parse(requestBody.toString('utf8'));
       model       = parsed.model   || 'unknown';
       isStreaming  = Boolean(parsed.stream);
 
+      // Model override — route specific patterns to cheaper models
+      const override = resolveModelOverride(model, consumer, parsed);
+      if (override) {
+        originalModel = model;
+        model = override.replace_model;
+        parsed.model = model;
+        log('info', `[model-override] ${override.name}: ${originalModel} → ${model}`);
+      }
+
       // Auto-inject stream_options.include_usage for OpenAI-style streaming so
       // upstream returns token counts in the final SSE chunk. Only touch the
       // OpenAI-compatible path (/chat/completions); Anthropic-native (/messages)
       // returns usage in message_delta without needing this flag.
+      let bodyModified = !!override;
       if (isStreaming && reqPath.includes('/chat/completions')) {
         const existing = parsed.stream_options && parsed.stream_options.include_usage;
         if (!existing) {
           parsed.stream_options = { ...(parsed.stream_options || {}), include_usage: true };
-          requestBody = Buffer.from(JSON.stringify(parsed), 'utf8');
-          if (forwardHeaders['content-length']) forwardHeaders['content-length'] = String(requestBody.length);
+          bodyModified = true;
         }
+      }
+
+      if (bodyModified) {
+        requestBody = Buffer.from(JSON.stringify(parsed), 'utf8');
+        if (forwardHeaders['content-length']) forwardHeaders['content-length'] = String(requestBody.length);
       }
     } catch {
       // Non-JSON body — passthrough as-is
@@ -382,7 +435,7 @@ app.all('/v1/*', async (req, res) => {
         estimated_cost_usd: finalCost,
         duration_ms:        duration,
         http_status:        httpStatus,
-        project, task, user_agent: userAgent, session_id: sessionId,
+        project, task, user_agent: userAgent, session_id: sessionId, original_model: originalModel,
       });
       log('info', `[SSE done] consumer=${consumer} model=${model} upstream=${upstreamName} in=${usageFromStream.input_tokens} out=${usageFromStream.output_tokens} cache_r=${usageFromStream.cache_read_input_tokens || 0} cache_w=${usageFromStream.cache_creation_input_tokens || 0} cost=$${finalCost}${litellmCost != null && Math.abs(cost - litellmCost) > 0.001 ? ` (est=$${cost})` : ''} dur=${duration}ms`);
     } else {
@@ -395,7 +448,7 @@ app.all('/v1/*', async (req, res) => {
         estimated_cost_usd: fallbackCost,
         duration_ms: duration,
         http_status: httpStatus,
-        project, task, user_agent: userAgent, session_id: sessionId,
+        project, task, user_agent: userAgent, session_id: sessionId, original_model: originalModel,
       });
       if (fallbackCost > 0) {
         log('info', `[SSE done] consumer=${consumer} model=${model} upstream=${upstreamName} cost=$${fallbackCost} (from x-litellm-response-cost header) dur=${duration}ms`);
@@ -447,7 +500,7 @@ app.all('/v1/*', async (req, res) => {
       estimated_cost_usd: finalCost,
       duration_ms:        duration,
       http_status:        httpStatus,
-      project, task, user_agent: userAgent, session_id: sessionId,
+      project, task, user_agent: userAgent, session_id: sessionId, original_model: originalModel,
     });
     log('info', `[done] consumer=${consumer} model=${model} upstream=${upstreamName} in=${usageData.input_tokens} out=${usageData.output_tokens} cache_r=${usageData.cache_read_input_tokens || 0} cache_w=${usageData.cache_creation_input_tokens || 0} cost=$${finalCost}${litellmCost != null && Math.abs(cost - litellmCost) > 0.001 ? ` (est=$${cost})` : ''} dur=${duration}ms`);
   } else {
@@ -459,7 +512,7 @@ app.all('/v1/*', async (req, res) => {
       estimated_cost_usd: fallbackCost,
       duration_ms: duration,
       http_status: httpStatus,
-      project, task, user_agent: userAgent, session_id: sessionId,
+      project, task, user_agent: userAgent, session_id: sessionId, original_model: originalModel,
     });
     if (httpStatus >= 200 && httpStatus < 300) {
       log('debug', `[done] no usage data in response for consumer=${consumer} model=${model} upstream=${upstreamName} status=${httpStatus}${fallbackCost > 0 ? ` litellm_cost=$${fallbackCost}` : ''}`);

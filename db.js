@@ -74,6 +74,11 @@ function init(dbPath) {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_usage_session ON usage_log (session_id)`);
     db.exec(`INSERT OR REPLACE INTO schema_version (version) VALUES (4)`);
   }
+  // Schema v5: original_model for model override tracking
+  if (!colNames.has('original_model')) {
+    db.exec(`ALTER TABLE usage_log ADD COLUMN original_model TEXT`);
+    db.exec(`INSERT OR REPLACE INTO schema_version (version) VALUES (5)`);
+  }
 
   return db;
 }
@@ -88,9 +93,9 @@ function logUsage(record) {
     INSERT INTO usage_log
       (consumer, model, upstream, input_tokens, output_tokens, cache_read_tokens,
        cache_write_tokens, estimated_cost_usd, duration_ms, http_status,
-       project, task, user_agent, session_id)
+       project, task, user_agent, session_id, original_model)
     VALUES
-      (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   stmt.run(
@@ -108,6 +113,7 @@ function logUsage(record) {
     record.task                || null,
     record.user_agent          || null,
     record.session_id          || null,
+    record.original_model      || null,
   );
 }
 

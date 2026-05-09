@@ -49,11 +49,13 @@ Daily cron/timers: spike-detect (30min), daily-report (23:47), onedrive-sync (23
 
 ## Medium (New)
 
-- [ ] T114: Cost optimization — reduce daily spend from $189/day. Opportunities:
-  - Fewer session restarts → save $10-20/day on cache_write ($18.75/M)
-  - Route routine tasks to Sonnet ($3/$15) instead of Opus ($15/$75) → save $50-80/day
-  - Session persistence / longer sessions → fewer fresh cache writes
-  - Tracked in `scripts/enforce-routing.js` findings
+- [ ] T114: Cost optimization — reduce daily spend. Analysis (2026-05-09):
+  - `claude-opus-4-6` ($193/d): 661 calls with 89M cache_read tokens. These are the main sessions.
+  - `claude-4.6-opus-aws` ($41/d): 1446 calls, full sessions via RDsec (NOT sub-agents). Reports 0 cache but has cache markers + 59-215 msgs. Cost is likely underreported by gateway.
+  - Cache write $49/d from ~10 session starts.
+  - Model override infrastructure added (config.model_overrides) but no safe targets identified yet.
+  - Real savings levers: fewer session restarts, shorter sessions, or routing genuinely lightweight ops to Haiku.
+  - Dashboard now shows model breakdown + cache economics for ongoing visibility.
 
 ## Low / Backlog
 

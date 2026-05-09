@@ -53,6 +53,24 @@ log:
   level: info               # info | debug | warn | error
   requests: true
 
+# --- Model overrides (T114) ---
+# Route specific request patterns to cheaper models for cost optimization.
+# Rules are evaluated in order; first match wins. Disabled by default.
+#
+# Match criteria (all specified conditions must be true):
+#   model:        exact string or glob pattern (e.g. "claude-*-opus-aws")
+#   consumer:     match X-Consumer header value
+#   no_cache:     true = only match requests with no cache_control markers
+#   max_messages: only match if messages array length is below threshold
+#
+# model_overrides:
+#   - name: sub-agent-to-haiku
+#     match:
+#       model: "claude-4.6-opus-aws"
+#       no_cache: true
+#     replace_model: "claude-4.5-haiku-aws"
+#     enabled: true
+
 # --- Per-project attribution (T102) ---
 # Claude Code sends X-Project and X-Claude-Code-Session-Id headers when configured.
 # Add to each project's .claude/settings.json:
