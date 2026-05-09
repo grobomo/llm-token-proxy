@@ -26,11 +26,11 @@ Backup zip at `backups/llm-token-proxy.zip`. Original git history at `archive/.g
 ### Next session priorities
 - [x] T131: Sync safe-restart.sh fix back to WSL project (pre-flight + retry logic) — synced to both git repo and deployed location
 - [x] T132: Cache cost estimation — `lib/cache-estimator.js`. Production data revealed RDSec reports `prompt_tokens` as non-cached only (input_tokens=1 for all Opus calls). Redesigned heuristic: for non-Anthropic upstreams with Claude models and output>0, estimates cache_write (30% of 200K, first session call) or cache_read (200K, subsequent). Schema v6 `cache_estimated` column. `/api/cache-estimation` endpoint. Also fixed non-streaming path missing OpenAI→Anthropic field normalization (pre-existing bug: `in=undefined`). 13 unit tests + 27 e2e = 40 total pass. Deployed to WSL and verified live.
-- [ ] T133: Fix blueprint-extra sharp module — `npm install sharp` in the right location so screenshots work
-- [ ] T130: Cost source-of-truth — RDSec vs C4E cost gap is cache token visibility. RDSec LiteLLM strips cache fields. Check Langfuse/Power BI (tab already open) for per-model per-user breakdown with cache data.
-- [ ] T129: Extract per-user Opus cost from RDSec Langfuse/Power BI to compare against proxy estimates
-- [ ] T111: Pluggable storage backend (Postgres) for multi-host deployments.
-- [ ] T134: Dashboard UX improvements — user requested review. Current state screenshotted at `dashboard-full.png`.
+- [ ] T133: Fix blueprint-extra sharp module — TODO written in blueprint-extra-mcp/TODO.md (cross-project)
+- [ ] T130: Cost source-of-truth — partially addressed by T132 (estimation). Needs Langfuse/Power BI for actual per-call data (requires Blueprint MCP SSO)
+- [ ] T129: Extract per-user Opus cost from RDSec Langfuse/Power BI (blocked by T133)
+- [ ] T111: Pluggable storage backend (Postgres) for multi-host deployments
+- [x] T134: Dashboard UX — per-project cost breakdown panel with horizontal bar chart. `/api/project-costs` endpoint, top 10 projects by cost (24h). Pushed to grobomo/llm-token-proxy.
 
 ---
 
