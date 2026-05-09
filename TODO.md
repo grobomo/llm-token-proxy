@@ -48,13 +48,13 @@ All systemd timers active: spike-detect (30min), watchdog (5min), daily-report (
 
 ## Medium (New)
 
-- [ ] T114: Cost optimization — reduce daily spend from ~$300/day. Updated analysis (2026-05-09 01:20 UTC):
-  - `claude-opus-4-6` ($246/d): 875 calls with 116M cache_read. Main interactive sessions. Cost is dominated by cache_read ($172) + output ($72).
-  - `claude-4.6-opus-aws` ($51/d): 2041 calls, avg 27 input tokens, 0 cache. Background/fast-mode calls. Almost entirely output cost ($75/M).
-  - Cache write: $59/d from 3.1M tokens (session starts).
-  - **Savings potential**: routing `4.6-opus-aws` → Sonnet saves **$41/day**; → Haiku saves **$48/day**.
-  - Model override infrastructure ready (config.model_overrides rule exists, disabled). Dashboard `/api/savings-potential` endpoint + savings panel live.
-  - **Next**: Enable `sub-agent-to-haiku` override with `replace_model: claude-4.6-sonnet-aws` (Sonnet, not Haiku) and monitor quality. Add max_messages guard.
+- [ ] T114: Cost optimization — reduce daily spend from ~$300/day. Updated analysis (2026-05-09 01:28 UTC):
+  - `claude-opus-4-6` ($247/d): 880 calls with 116M cache_read. Main interactive sessions.
+  - `claude-4.6-opus-aws` ($53/d): 2091 calls. **CONFIRMED**: these are full sessions (100-300+ messages with cache markers). RDsec gateway reports 0 cache tokens but the calls are heavy. Model routing NOT viable.
+  - Cache write: $59/d from 3.2M tokens, 12 session restarts.
+  - **Actual savings lever**: fewer restarts → $2.33/restart saved. Reducing from 12 to 6 restarts/day saves ~$14/day.
+  - Dashboard shows cost optimization panel with restart count and savings.
+  - **Next**: Context-reset should be less aggressive (longer sessions before resetting). Consider session persistence or compaction strategies.
 - [ ] T115: Per-project hourly bar chart — second chart below the model chart once more projects are tagged.
 
 ## Low / Backlog

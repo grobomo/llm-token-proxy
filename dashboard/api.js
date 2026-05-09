@@ -256,50 +256,50 @@ router.get('/cost-breakdown', (req, res) => {
 
 // ---------------------------------------------------------------------------
 // GET /api/savings-potential
-// Estimate daily savings if model overrides were enabled.
+// Show cost breakdown and optimization levers (session restarts, caching).
 // ---------------------------------------------------------------------------
 router.get('/savings-potential', (req, res) => {
   try {
-    const candidates = db.query(`
+    const costByType = db.query(`
       SELECT
         model,
         COUNT(*) AS calls,
         SUM(output_tokens) AS total_output,
-        SUM(estimated_cost_usd) AS current_cost
+        SUM(cache_write_tokens) AS total_cw,
+        SUM(cache_read_tokens) AS total_cr,
+        SUM(estimated_cost_usd) AS cost
       FROM usage_log
       WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
-        AND cache_write_tokens = 0
-        AND cache_read_tokens = 0
       GROUP BY model
-      ORDER BY current_cost DESC
+      ORDER BY cost DESC
     `);
 
-    const rules = [];
-    for (const c of candidates) {
-      if (!c.model || c.current_cost < 1) continue;
-      const outM = (c.total_output || 0) / 1e6;
-      // Estimate cost at Sonnet pricing ($15/M output) vs current
-      const sonnetCost = outM * 15 + (c.calls * 27 / 1e6) * 3; // rough input at Sonnet rate
-      const haikuCost = outM * 5 + (c.calls * 27 / 1e6) * 1;
-      rules.push({
-        model: c.model,
-        calls: c.calls,
-        current_cost: parseFloat(c.current_cost.toFixed(2)),
-        sonnet_cost: parseFloat(sonnetCost.toFixed(2)),
-        haiku_cost: parseFloat(haikuCost.toFixed(2)),
-        savings_sonnet: parseFloat((c.current_cost - sonnetCost).toFixed(2)),
-        savings_haiku: parseFloat((c.current_cost - haikuCost).toFixed(2)),
-      });
-    }
+    const sessionStarts = db.query(`
+      SELECT COUNT(*) AS sessions,
+             SUM(cache_write_tokens) AS total_cw
+      FROM usage_log
+      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+        AND cache_write_tokens > 50000
+    `);
 
-    const totalSavingsSonnet = rules.reduce((s, r) => s + r.savings_sonnet, 0);
-    const totalSavingsHaiku = rules.reduce((s, r) => s + r.savings_haiku, 0);
+    const ss = sessionStarts[0] || { sessions: 0, total_cw: 0 };
+    const cwCost = (ss.total_cw || 0) * 18.75 / 1e6;
+    const savingsPerFewerRestart = ss.sessions > 1 ? cwCost / ss.sessions : 0;
 
     res.json({
-      candidates: rules,
-      total_savings_sonnet: parseFloat(totalSavingsSonnet.toFixed(2)),
-      total_savings_haiku: parseFloat(totalSavingsHaiku.toFixed(2)),
-      note: 'Estimates for cacheless calls only. Enable model_overrides in config.yaml to activate.',
+      models: costByType.map(m => ({
+        model: m.model,
+        calls: m.calls,
+        cost: parseFloat((m.cost || 0).toFixed(2)),
+        output_tokens: m.total_output || 0,
+        cache_write_tokens: m.total_cw || 0,
+      })),
+      session_restarts: {
+        count: ss.sessions,
+        cache_write_cost: parseFloat(cwCost.toFixed(2)),
+        savings_per_fewer_restart: parseFloat(savingsPerFewerRestart.toFixed(2)),
+      },
+      note: 'Primary savings lever: fewer session restarts ($' + savingsPerFewerRestart.toFixed(0) + '/restart avoided). Model routing not viable — all opus-aws calls are full sessions (100-300+ messages).',
     });
   } catch (err) {
     res.status(500).json({ error: 'internal_error', message: err.message });

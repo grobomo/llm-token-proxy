@@ -250,7 +250,7 @@
 
 <div class="breakdown">
   <div class="breakdown-card" style="grid-column: span 2">
-    <h3>Potential savings — model routing</h3>
+    <h3>Cost optimization — session restarts</h3>
     <div id="savings-panel"></div>
   </div>
 </div>
@@ -434,34 +434,26 @@ async function loadBreakdown() {
 
 function renderSavings(data) {
   const el = document.getElementById('savings-panel');
-  const candidates = (data.candidates || []).filter(c => c.savings_sonnet > 1);
-
-  if (candidates.length === 0) {
-    el.innerHTML = '<div class="empty-state" style="padding:12px">No routing candidates (all calls use cache)</div>';
-    return;
-  }
+  const ss = data.session_restarts || {};
 
   el.innerHTML = `
     <div style="display:flex;gap:24px;margin-bottom:12px">
       <div class="stat-item">
-        <div class="stat-value" style="color:var(--green)">${fmtCost(data.total_savings_sonnet)}/day</div>
-        <div class="stat-label">→ Sonnet savings</div>
+        <div class="stat-value">${ss.count || 0}</div>
+        <div class="stat-label">Session restarts (24h)</div>
       </div>
       <div class="stat-item">
-        <div class="stat-value" style="color:var(--green)">${fmtCost(data.total_savings_haiku)}/day</div>
-        <div class="stat-label">→ Haiku savings</div>
+        <div class="stat-value" style="color:var(--yellow)">${fmtCost(ss.cache_write_cost || 0)}</div>
+        <div class="stat-label">Cache write cost</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" style="color:var(--green)">${fmtCost(ss.savings_per_fewer_restart || 0)}</div>
+        <div class="stat-label">Saved per fewer restart</div>
       </div>
     </div>
-    ${candidates.map(c => `
-      <div class="model-row">
-        <span class="model-name">${shortModel(c.model)}</span>
-        <span class="model-calls">${c.calls} calls</span>
-        <span style="color:var(--muted);font-size:12px">${fmtCost(c.current_cost)} → ${fmtCost(c.sonnet_cost)}</span>
-        <span class="model-cost" style="color:var(--green)">−${fmtCost(c.savings_sonnet)}</span>
-      </div>
-    `).join('')}
-    <div style="margin-top:8px;font-size:11px;color:var(--muted)">
-      Cacheless calls only. Enable <code>model_overrides</code> in config.yaml to activate.
+    <div style="font-size:11px;color:var(--muted);line-height:1.6">
+      Primary savings lever: fewer session restarts. Each restart creates fresh cache_write at $18.75/M tokens.
+      Model routing not viable — all opus-aws calls are full sessions (100-300+ messages).
     </div>
   `;
 }
