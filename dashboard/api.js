@@ -280,6 +280,7 @@ router.get('/project-costs', (req, res) => {
         SUM(output_tokens) AS output_tokens
       FROM usage_log
       WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+        AND http_status BETWEEN 200 AND 299
       GROUP BY project
       ORDER BY cost DESC
       LIMIT 10
@@ -310,6 +311,7 @@ router.get('/cost-breakdown', (req, res) => {
         SUM(CASE WHEN cache_estimated = 1 THEN 1 ELSE 0 END) AS estimated_calls
       FROM usage_log
       WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+        AND http_status BETWEEN 200 AND 299
       GROUP BY model
       ORDER BY cost DESC
     `);
