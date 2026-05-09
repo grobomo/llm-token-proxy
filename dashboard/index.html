@@ -266,12 +266,13 @@
 
 <div class="health-bar" id="health-bar">
   <div class="health-item">
-    <div class="health-dot unknown" id="health-dot-proxy"></div>
+    <div class="health-dot up"></div>
     <span class="health-label">Proxy</span>
-    <span class="health-status unknown" id="health-proxy">checking...</span>
+    <span class="health-status up">running</span>
   </div>
   <div id="health-upstreams"></div>
   <span class="health-ts" id="health-ts"></span>
+  <span class="health-ts" id="health-stale" style="display:none;color:var(--yellow)">stale</span>
 </div>
 
 <div class="chart-container">
@@ -560,32 +561,51 @@ async function loadTrend() {
   } catch {}
 }
 
+let lastHealthCheck = 0;
+let lastHealthSuccess = null;
+
 async function loadHealth() {
-  const dot = document.getElementById('health-dot-proxy');
-  const label = document.getElementById('health-proxy');
   const upstreamsEl = document.getElementById('health-upstreams');
   const tsEl = document.getElementById('health-ts');
+  const staleEl = document.getElementById('health-stale');
+
   try {
     const r = await fetch('/diagnose');
     const d = await r.json();
-    dot.className = 'health-dot up';
-    label.className = 'health-status up';
-    label.textContent = 'running';
+    lastHealthCheck = Date.now();
+    lastHealthSuccess = d.ts;
+    staleEl.style.display = 'none';
+
     const upstreamHtml = Object.entries(d.upstreams || {}).map(([name, status]) => {
       const cls = status === 'reachable' ? 'up' : 'down';
-      const text = status === 'reachable' ? 'up' : 'down';
-      return `<div class="health-item"><div class="health-dot ${cls}"></div><span class="health-label">${name}</span><span class="health-status ${cls}">${text}</span></div>`;
+      const label = status === 'reachable' ? 'up' : 'unreachable';
+      const tooltip = status === 'reachable'
+        ? `title="${name}: healthy"`
+        : `title="${name}: connection failed. Last OK: ${lastHealthSuccess || 'never'}"`;
+      return `<div class="health-item" ${tooltip}><div class="health-dot ${cls}"></div><span class="health-label">${name}</span><span class="health-status ${cls}">${label}</span></div>`;
     }).join('');
     upstreamsEl.innerHTML = upstreamHtml;
-    tsEl.textContent = new Date(d.ts).toLocaleTimeString();
+    tsEl.textContent = 'checked ' + new Date().toLocaleTimeString();
   } catch (err) {
-    dot.className = 'health-dot down';
-    label.className = 'health-status down';
-    label.textContent = 'unreachable';
-    upstreamsEl.innerHTML = '';
-    tsEl.textContent = 'failed ' + new Date().toLocaleTimeString();
+    lastHealthCheck = Date.now();
+    upstreamsEl.innerHTML = `<div class="health-item" title="${err.message}"><div class="health-dot down"></div><span class="health-label">API upstreams</span><span class="health-status down">check failed</span></div>`;
+    tsEl.textContent = 'error ' + new Date().toLocaleTimeString();
+    staleEl.style.display = 'none';
   }
 }
+
+// Staleness detection: mark stale if last check was >30s ago (tab backgrounded)
+setInterval(() => {
+  const staleEl = document.getElementById('health-stale');
+  if (lastHealthCheck && Date.now() - lastHealthCheck > 30000) {
+    staleEl.style.display = 'inline';
+  }
+}, 5000);
+
+// Force refresh on tab focus
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) loadHealth();
+});
 
 async function loadJudge() {
   const el = document.getElementById('judge-panel');
