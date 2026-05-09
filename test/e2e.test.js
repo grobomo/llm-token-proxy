@@ -710,6 +710,26 @@ describe('E2E: Token Proxy', { timeout: 30000 }, () => {
   });
 
   // =========================================================================
+  // Session analytics
+  // =========================================================================
+
+  describe('/api/sessions', () => {
+    it('returns session groupings', async () => {
+      const { status, json } = await req('GET', '/api/sessions');
+      assert.equal(status, 200);
+      assert.ok(Array.isArray(json.sessions));
+      assert.ok(typeof json.total_cost === 'number');
+      assert.ok(typeof json.session_count === 'number');
+    });
+
+    it('respects range parameter', async () => {
+      const { status, json } = await req('GET', '/api/sessions?range=7d');
+      assert.equal(status, 200);
+      assert.ok(Array.isArray(json.sessions));
+    });
+  });
+
+  // =========================================================================
   // CSV export
   // =========================================================================
 

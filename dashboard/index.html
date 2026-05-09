@@ -311,6 +311,13 @@
 
 <div class="breakdown">
   <div class="breakdown-card" style="grid-column: span 2">
+    <h3 class="range-label">Sessions — 24h</h3>
+    <div id="sessions-panel"></div>
+  </div>
+</div>
+
+<div class="breakdown">
+  <div class="breakdown-card" style="grid-column: span 2">
     <h3 class="range-label">Cost optimization — 24h</h3>
     <div id="savings-panel"></div>
   </div>
@@ -697,6 +704,39 @@ async function loadProjectCosts() {
   } catch { el.innerHTML = '<div class="empty-state" style="padding:12px">—</div>'; }
 }
 
+async function loadSessions() {
+  const el = document.getElementById('sessions-panel');
+  try {
+    const r = await fetch(apiUrl('/api/sessions'));
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    const sessions = d.sessions || [];
+    if (sessions.length === 0) {
+      el.innerHTML = '<div class="empty-state" style="padding:12px">No sessions in this range</div>';
+      return;
+    }
+    const maxCost = sessions[0]?.cost || 1;
+    el.innerHTML = sessions.map((s, i) => {
+      const pct = Math.max(2, (s.cost / maxCost) * 100);
+      const sid = (s.session_id || '').slice(0, 8);
+      const proj = s.project.replace(/^.*[/\\]/, '');
+      const dur = s.duration_min != null ? `${s.duration_min}m` : '—';
+      const models = (s.models || []).map(m => esc(m.replace(/^claude-/, '').replace(/-20\d{6}$/, ''))).join(', ');
+      return `
+        <div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px">
+          <span style="width:60px;font-family:monospace;color:var(--accent);font-size:11px" title="${esc(s.session_id)}">${esc(sid)}</span>
+          <span style="width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)" title="${esc(s.project)}">${esc(proj)}</span>
+          <div style="flex:1;height:14px;background:var(--border);border-radius:3px;overflow:hidden">
+            <div style="width:${pct}%;height:100%;background:${COLORS[i % COLORS.length]};border-radius:3px"></div>
+          </div>
+          <span style="min-width:40px;text-align:right;color:var(--muted);font-size:11px">${s.calls}</span>
+          <span style="min-width:40px;text-align:right;color:var(--muted);font-size:11px">${dur}</span>
+          <span style="min-width:55px;text-align:right;font-weight:600">${fmtCost(s.cost)}</span>
+        </div>`;
+    }).join('');
+  } catch { el.innerHTML = '<div class="empty-state" style="padding:12px">—</div>'; }
+}
+
 function refreshAll() {
   const rl = rangeLabel();
   document.getElementById('chart-label').textContent = `Hourly spend — last ${rl}`;
@@ -707,6 +747,7 @@ function refreshAll() {
   loadBreakdown();
   loadSavings();
   loadProjectCosts();
+  loadSessions();
 }
 
 function exportCSV() {

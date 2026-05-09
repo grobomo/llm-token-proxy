@@ -40,6 +40,7 @@ router.get('/', (req, res) => {
       { method: 'GET', path: '/api/daily-comparison', description: 'Today vs yesterday spend', params: ['tz_offset=<minutes>'] },
       { method: 'GET', path: '/api/cache-estimation', description: 'Cache estimation stats (estimated vs actual)', params: ['range=1h|6h|12h|24h|7d|30d'] },
       { method: 'GET', path: '/api/cache-stats', description: 'Response cache hit/miss stats' },
+      { method: 'GET', path: '/api/sessions', description: 'Per-session cost analytics', params: ['range=1h|6h|12h|24h|7d|30d', 'limit=<n>'] },
       { method: 'GET', path: '/api/export', description: 'Download usage data as CSV', params: ['range=1h|6h|12h|24h|7d|30d'] },
       { method: 'POST', path: '/api/backfill-cache', description: 'Retroactively estimate cache tokens (localhost only)', params: ['body: {dryRun: true|false}'] },
     ],
@@ -573,6 +574,58 @@ router.post('/backfill-cache', (req, res) => {
       total_cost_delta: parseFloat(totalCostDelta.toFixed(4)),
       details: details.length <= 100 ? details : details.slice(0, 100),
       truncated: details.length > 100,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'internal_error', message: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/sessions
+// Per-session cost and call analytics.
+// Query params: range (default: 24h), limit (default: 20)
+// ---------------------------------------------------------------------------
+router.get('/sessions', (req, res) => {
+  try {
+    const interval = parseRange(req);
+    const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+
+    const sessions = db.query(`
+      SELECT
+        session_id,
+        COALESCE(project, '(untagged)') AS project,
+        consumer,
+        GROUP_CONCAT(DISTINCT model) AS models,
+        COUNT(*) AS calls,
+        SUM(estimated_cost_usd) AS cost,
+        SUM(input_tokens) AS input_tokens,
+        SUM(output_tokens) AS output_tokens,
+        SUM(cache_read_tokens) AS cache_read_tokens,
+        SUM(cache_write_tokens) AS cache_write_tokens,
+        MIN(timestamp) AS first_call,
+        MAX(timestamp) AS last_call,
+        ROUND((julianday(MAX(timestamp)) - julianday(MIN(timestamp))) * 24 * 60, 1) AS duration_min
+      FROM usage_log
+      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
+        AND session_id IS NOT NULL
+        AND http_status BETWEEN 200 AND 299
+      GROUP BY session_id
+      ORDER BY cost DESC
+      LIMIT ${limit}
+    `);
+
+    const totalCost = sessions.reduce((s, r) => s + (r.cost || 0), 0);
+    const totalCalls = sessions.reduce((s, r) => s + (r.calls || 0), 0);
+
+    res.json({
+      sessions: sessions.map(s => ({
+        ...s,
+        cost: parseFloat((s.cost || 0).toFixed(4)),
+        models: s.models ? s.models.split(',') : [],
+      })),
+      total_cost: parseFloat(totalCost.toFixed(2)),
+      total_calls: totalCalls,
+      session_count: sessions.length,
     });
   } catch (err) {
     res.status(500).json({ error: 'internal_error', message: err.message });
