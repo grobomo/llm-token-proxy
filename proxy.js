@@ -171,31 +171,44 @@ app.get('/health', async (req, res) => {
 });
 
 app.get('/diagnose', async (req, res) => {
-  const primaryUpstream = UPSTREAMS.length > 0 ? UPSTREAMS[0].url : UPSTREAM;
-  let upstreamReachable = false;
-  try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 5000);
-    const r = await fetch(primaryUpstream.replace(/\/v1\/?$/, ''), {
-      method: 'HEAD',
-      signal: ctrl.signal,
-    }).catch(() => null);
-    clearTimeout(timer);
-    upstreamReachable = (r !== null);
-  } catch { /* unreachable */ }
+  const results = {};
+  for (const upstream of UPSTREAMS) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 5000);
+      const r = await fetch(upstream.url.replace(/\/v1\/?$/, ''), {
+        method: 'HEAD',
+        signal: ctrl.signal,
+      }).catch(() => null);
+      clearTimeout(timer);
+      results[upstream.name] = r !== null ? 'reachable' : 'unreachable';
+    } catch {
+      results[upstream.name] = 'unreachable';
+    }
+  }
 
-  const cause = upstreamReachable ? 'healthy' : 'upstream_down';
-  const detail = upstreamReachable
-    ? 'Proxy and upstream both healthy'
-    : `Proxy is running but upstream (${primaryUpstream}) is unreachable`;
+  const allReachable = Object.values(results).every(s => s === 'reachable');
+  const allDown = Object.values(results).every(s => s === 'unreachable');
 
-  res.status(upstreamReachable ? 200 : 503).json({
+  let cause, action;
+  if (allReachable) {
+    cause = 'healthy';
+    action = 'No action needed';
+  } else if (allDown) {
+    cause = 'all_upstreams_down';
+    action = 'Check network connectivity. If persistent, wait for upstream recovery.';
+  } else {
+    cause = 'partial_outage';
+    const down = Object.entries(results).filter(([,s]) => s === 'unreachable').map(([n]) => n);
+    action = `${down.join(', ')} unreachable. Requests using those upstreams will fail. Others are healthy.`;
+  }
+
+  res.status(allReachable ? 200 : 503).json({
     cause,
-    proxy:    true,
-    upstream: upstreamReachable,
-    detail,
-    upstreams: UPSTREAMS.map(u => u.name),
-    ts:       new Date().toISOString(),
+    proxy: true,
+    upstreams: results,
+    action,
+    ts: new Date().toISOString(),
   });
 });
 
