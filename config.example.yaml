@@ -42,7 +42,15 @@ pricing:
 budget:
   monthly_limit: 100.00     # USD
   alert_at: [50, 75, 90]    # percent thresholds
-  alert_channel: log        # log | slack | webhook (slack/webhook need wiring)
+  alert_channel: log        # log | slack | webhook
+
+# --- Alerting (T112) ---
+# Unified alerting for budget thresholds, spike detection, health checks.
+# Multiple channels can fire simultaneously. Configure URLs via env vars or here.
+alerting:
+  slack_webhook: ""          # or set SLACK_WEBHOOK_URL env var
+  webhook_url: ""            # or set ALERT_WEBHOOK_URL env var
+  # email:                   # future: SMTP config for email alerts
 
 dashboard:
   enabled: true

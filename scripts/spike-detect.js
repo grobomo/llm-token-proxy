@@ -19,6 +19,7 @@
 const { DatabaseSync } = require('node:sqlite');
 const path = require('path');
 const fs   = require('fs');
+const { alert } = require('../lib/alert');
 
 const SCRIPT_DIR = path.dirname(path.resolve(__filename));
 const DB_PATH    = process.env.USAGE_DB || path.resolve(SCRIPT_DIR, '../usage.db');
@@ -86,9 +87,11 @@ function run() {
   console.log(JSON.stringify(result, null, 2));
 
   if (isSpike) {
-    const alertMsg = `[${new Date().toISOString()}] SPIKE: today=$${today.cost.toFixed(2)} (${ratio.toFixed(1)}x avg of $${avgCost.toFixed(2)}/day over ${history.length}d)\n`;
-    fs.appendFileSync(ALERT_FILE, alertMsg);
-    process.exit(1);
+    const alertMsg = `SPIKE: today=$${today.cost.toFixed(2)} (${ratio.toFixed(1)}x avg of $${avgCost.toFixed(2)}/day over ${history.length}d)`;
+    fs.appendFileSync(ALERT_FILE, `[${new Date().toISOString()}] ${alertMsg}\n`);
+    alert(alertMsg, { event: 'spike', extra: { cost_today: today.cost, ratio, avg: avgCost } })
+      .then(() => process.exit(1))
+      .catch(() => process.exit(1));
   } else {
     if (fs.existsSync(ALERT_FILE)) fs.unlinkSync(ALERT_FILE);
     process.exit(0);
