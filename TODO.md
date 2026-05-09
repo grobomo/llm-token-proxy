@@ -1,22 +1,19 @@
 # TODO
 
-## Session State (2026-05-09 17:40 CDT)
+## Session State (2026-05-09 18:05 CDT)
 
-**Windows fork** of `llm-token-proxy`. Published to `grobomo/llm-token-proxy` (public). All commits pushed through `74e1f36`.
+**Windows fork** of `llm-token-proxy`. Published to `grobomo/llm-token-proxy` (public). All commits pushed through `67d1f65`.
 
 ### Session handoff
 
 **What was done this session:**
-1. **T145: .gitignore** — Added `.playwright-mcp/` to .gitignore.
-2. **T146: Favicon** — Inline SVG favicon + route handler eliminates /favicon.ico 404.
-3. **T147: CSV export** — `GET /api/export?range=24h` downloads usage data as CSV. Export button in dashboard header.
-4. **T148: API index** — `GET /api/` returns self-documenting endpoint list with descriptions and params.
-5. **T149: Session analytics** — `GET /api/sessions` groups by session_id with cost, call count, duration, models. Dashboard panel added.
-6. **Fix: shortModel() rendering** — T143's XSS fix double-escaped model names. Fixed by moving esc() inside shortModel().
-7. **Deploy server update** — Added missing API endpoints (project-costs, sessions, judge-stats, cache-estimation, favicon) so tokentracker.click dashboard panels render data.
-8. **XSS fix in deploy admin** — Escaped path, user agent, IP, label in access log HTML view.
-9. **API reference docs** — Added Dashboard API section covering all new endpoints.
-10. Tests: 60 → 64. CI green. All synced to WSL. Proxy restarted. Dashboard visually verified.
+1. **Deploy server: range support** — All dashboard API endpoints now support `?range=` query param (was hardcoded to 24h). Uses same `parseRange()` whitelist as main proxy.
+2. **Deploy server: missing endpoints** — Added `GET /diagnose`, `GET /api/export` (CSV), `GET /api/` (self-documenting index) for full dashboard parity.
+3. **Dashboard: loading UX** — Panels fade to 40% opacity during data fetch. "updated HH:MM:SS" timestamp in header. Uses Promise.all for parallel loading.
+4. **T150: DB stats endpoint** — `GET /api/db-stats` returns row count, date range, model/project/session counts, total cost. Dashboard footer shows this data.
+5. **README** — Updated test count to 65.
+6. **Cleanup** — Moved temp screenshot PNGs and .playwright-mcp/ artifacts to archive/.
+7. Tests: 64 → 65. CI green. All synced to WSL.
 
 ### Next session priorities
 - [ ] T133: Fix blueprint-extra sharp module — TODO written in blueprint-extra-mcp/TODO.md (cross-project)
