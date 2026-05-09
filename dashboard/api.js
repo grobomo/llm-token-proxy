@@ -266,6 +266,33 @@ router.get('/daily-comparison', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/project-costs
+// Top projects by cost in the last 24 hours.
+// ---------------------------------------------------------------------------
+router.get('/project-costs', (req, res) => {
+  try {
+    const projects = db.query(`
+      SELECT
+        COALESCE(project, '(untagged)') AS project,
+        COUNT(*) AS calls,
+        SUM(estimated_cost_usd) AS cost,
+        SUM(input_tokens) AS input_tokens,
+        SUM(output_tokens) AS output_tokens
+      FROM usage_log
+      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+      GROUP BY project
+      ORDER BY cost DESC
+      LIMIT 10
+    `);
+
+    const totalCost = projects.reduce((s, p) => s + (p.cost || 0), 0);
+    res.json({ projects, total_cost: parseFloat(totalCost.toFixed(2)) });
+  } catch (err) {
+    res.status(500).json({ error: 'internal_error', message: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/cost-breakdown
 // Model-level cost breakdown + cache economics for the dashboard.
 // ---------------------------------------------------------------------------
