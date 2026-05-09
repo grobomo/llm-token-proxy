@@ -261,6 +261,14 @@
 
 <header>
   <h1>Token Tracker</h1>
+  <select id="range-select" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:12px;cursor:pointer">
+    <option value="1h">1h</option>
+    <option value="6h">6h</option>
+    <option value="12h">12h</option>
+    <option value="24h" selected>24h</option>
+    <option value="7d">7d</option>
+    <option value="30d">30d</option>
+  </select>
   <span class="total" id="trend-label"></span>
   <span class="total" id="total-label">—</span>
 </header>
@@ -277,24 +285,24 @@
 </div>
 
 <div class="chart-container">
-  <div class="chart-label">Hourly spend — last 24 hours</div>
+  <div class="chart-label" id="chart-label">Hourly spend — last 24 hours</div>
   <div class="chart" id="chart"></div>
 </div>
 
 <div class="breakdown">
   <div class="breakdown-card">
-    <h3>Cost by model — 24h</h3>
+    <h3 class="range-label">Cost by model — 24h</h3>
     <div id="model-breakdown"></div>
   </div>
   <div class="breakdown-card">
-    <h3>Cache economics — 24h</h3>
+    <h3 class="range-label">Cache economics — 24h</h3>
     <div class="stat-grid" id="cache-stats"></div>
   </div>
 </div>
 
 <div class="breakdown">
   <div class="breakdown-card" style="grid-column: span 2">
-    <h3>Top projects — 24h</h3>
+    <h3 class="range-label">Top projects — 24h</h3>
     <div id="project-costs"></div>
   </div>
 </div>
@@ -338,6 +346,9 @@ function buildModelColorMap(hours) {
 }
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function rangeParam() { return document.getElementById('range-select').value; }
+function apiUrl(path) { return `${path}${path.includes('?') ? '&' : '?'}range=${rangeParam()}`; }
+function rangeLabel() { return rangeParam(); }
 
 function fmtCost(usd) {
   if (!usd || usd === 0) return '$0';
@@ -438,7 +449,7 @@ function renderChart(data) {
 
 async function load() {
   try {
-    const r = await fetch('/api/hourly-breakdown');
+    const r = await fetch(apiUrl('/api/hourly-breakdown'));
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     renderChart(await r.json());
   } catch (err) {
@@ -496,7 +507,7 @@ function renderBreakdown(data) {
 
 async function loadBreakdown() {
   try {
-    const r = await fetch('/api/cost-breakdown');
+    const r = await fetch(apiUrl('/api/cost-breakdown'));
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     renderBreakdown(await r.json());
   } catch (err) {
@@ -543,7 +554,7 @@ function renderSavings(data) {
 
 async function loadSavings() {
   try {
-    const r = await fetch('/api/savings-potential');
+    const r = await fetch(apiUrl('/api/savings-potential'));
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     renderSavings(await r.json());
   } catch (err) {
@@ -615,7 +626,7 @@ setInterval(() => {
 
 // Force refresh on tab focus (browser throttles setInterval when backgrounded)
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) { loadHealth(); load(); loadBreakdown(); loadTrend(); loadJudge(); loadProjectCosts(); }
+  if (!document.hidden) { loadHealth(); refreshAll(); loadTrend(); loadJudge(); }
 });
 
 async function loadJudge() {
@@ -657,7 +668,7 @@ async function loadJudge() {
 async function loadProjectCosts() {
   const el = document.getElementById('project-costs');
   try {
-    const r = await fetch('/api/project-costs');
+    const r = await fetch(apiUrl('/api/project-costs'));
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
     const projects = d.projects || [];
@@ -684,20 +695,28 @@ async function loadProjectCosts() {
   } catch { el.innerHTML = '<div class="empty-state" style="padding:12px">—</div>'; }
 }
 
-load();
-loadBreakdown();
-loadSavings();
+function refreshAll() {
+  const rl = rangeLabel();
+  document.getElementById('chart-label').textContent = `Hourly spend — last ${rl}`;
+  document.querySelectorAll('.range-label').forEach(el => {
+    el.textContent = el.textContent.replace(/—\s*\S+$/, `— ${rl}`);
+  });
+  load();
+  loadBreakdown();
+  loadSavings();
+  loadProjectCosts();
+}
+
+document.getElementById('range-select').addEventListener('change', refreshAll);
+
+refreshAll();
 loadTrend();
 loadJudge();
 loadHealth();
-loadProjectCosts();
-setInterval(load, 60000);
-setInterval(loadBreakdown, 60000);
-setInterval(loadSavings, 300000);
+setInterval(refreshAll, 60000);
 setInterval(loadTrend, 120000);
 setInterval(loadJudge, 60000);
 setInterval(loadHealth, 15000);
-setInterval(loadProjectCosts, 60000);
 </script>
 </body>
 </html>

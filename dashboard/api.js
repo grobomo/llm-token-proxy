@@ -18,6 +18,20 @@ router.get('/cache-stats', (req, res) => {
   res.json(apiCache.stats());
 });
 
+// Parse ?range= query param into SQL interval. Defaults to 24h.
+function parseRange(req) {
+  const r = req.query.range || '24h';
+  const map = {
+    '1h':  '-1 hours',
+    '6h':  '-6 hours',
+    '12h': '-12 hours',
+    '24h': '-24 hours',
+    '7d':  '-7 days',
+    '30d': '-30 days',
+  };
+  return map[r] || '-24 hours';
+}
+
 // Load config for budget limit
 function getConfig() {
   try {
@@ -187,6 +201,7 @@ router.get('/top-operations', (req, res) => {
 // ---------------------------------------------------------------------------
 router.get('/hourly-breakdown', (req, res) => {
   try {
+    const interval = parseRange(req);
     const projectRows = db.query(`
       SELECT
         strftime('%Y-%m-%dT%H', timestamp) AS hour,
@@ -194,7 +209,7 @@ router.get('/hourly-breakdown', (req, res) => {
         SUM(estimated_cost_usd) AS cost,
         COUNT(*) AS calls
       FROM usage_log
-      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
       GROUP BY hour, project
       ORDER BY hour, cost DESC
     `);
@@ -206,7 +221,7 @@ router.get('/hourly-breakdown', (req, res) => {
         SUM(estimated_cost_usd) AS cost,
         COUNT(*) AS calls
       FROM usage_log
-      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
       GROUP BY hour, model
       ORDER BY hour, cost DESC
     `);
@@ -271,6 +286,7 @@ router.get('/daily-comparison', (req, res) => {
 // ---------------------------------------------------------------------------
 router.get('/project-costs', (req, res) => {
   try {
+    const interval = parseRange(req);
     const projects = db.query(`
       SELECT
         COALESCE(project, '(untagged)') AS project,
@@ -279,7 +295,7 @@ router.get('/project-costs', (req, res) => {
         SUM(input_tokens) AS input_tokens,
         SUM(output_tokens) AS output_tokens
       FROM usage_log
-      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
         AND http_status BETWEEN 200 AND 299
       GROUP BY project
       ORDER BY cost DESC
@@ -299,6 +315,7 @@ router.get('/project-costs', (req, res) => {
 // ---------------------------------------------------------------------------
 router.get('/cost-breakdown', (req, res) => {
   try {
+    const interval = parseRange(req);
     const models = db.query(`
       SELECT
         model,
@@ -310,7 +327,7 @@ router.get('/cost-breakdown', (req, res) => {
         SUM(cache_write_tokens) AS cache_write_tokens,
         SUM(CASE WHEN cache_estimated = 1 THEN 1 ELSE 0 END) AS estimated_calls
       FROM usage_log
-      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
         AND http_status BETWEEN 200 AND 299
       GROUP BY model
       ORDER BY cost DESC
@@ -337,6 +354,7 @@ router.get('/cost-breakdown', (req, res) => {
 // ---------------------------------------------------------------------------
 router.get('/savings-potential', (req, res) => {
   try {
+    const interval = parseRange(req);
     const costByType = db.query(`
       SELECT
         model,
@@ -346,7 +364,7 @@ router.get('/savings-potential', (req, res) => {
         SUM(cache_read_tokens) AS total_cr,
         SUM(estimated_cost_usd) AS cost
       FROM usage_log
-      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
       GROUP BY model
       ORDER BY cost DESC
     `);
@@ -355,7 +373,7 @@ router.get('/savings-potential', (req, res) => {
       SELECT COUNT(*) AS sessions,
              SUM(cache_write_tokens) AS total_cw
       FROM usage_log
-      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
         AND cache_write_tokens > 50000
     `);
 
@@ -389,6 +407,7 @@ router.get('/savings-potential', (req, res) => {
 // ---------------------------------------------------------------------------
 router.get('/cache-estimation', (req, res) => {
   try {
+    const interval = parseRange(req);
     const stats = db.query(`
       SELECT
         upstream,
@@ -398,7 +417,7 @@ router.get('/cache-estimation', (req, res) => {
         SUM(cache_write_tokens) AS total_cache_write,
         SUM(estimated_cost_usd) AS total_cost
       FROM usage_log
-      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
       GROUP BY upstream, cache_estimated
       ORDER BY total_cost DESC
     `);
