@@ -158,6 +158,65 @@ app.get('/api/savings-potential', (req, res) => {
   });
 });
 
+app.get('/api/project-costs', (req, res) => {
+  const projects = query(`
+    SELECT COALESCE(project, '(untagged)') AS project, COUNT(*) AS calls,
+           SUM(estimated_cost_usd) AS cost
+    FROM usage_log
+    WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+      AND http_status BETWEEN 200 AND 299
+    GROUP BY project ORDER BY cost DESC LIMIT 10
+  `);
+  const totalCost = projects.reduce((s, p) => s + (p.cost || 0), 0);
+  res.json({ projects, total_cost: parseFloat(totalCost.toFixed(2)) });
+});
+
+app.get('/api/sessions', (req, res) => {
+  const sessions = query(`
+    SELECT session_id, COALESCE(project, '(untagged)') AS project, consumer,
+           GROUP_CONCAT(DISTINCT model) AS models, COUNT(*) AS calls,
+           SUM(estimated_cost_usd) AS cost,
+           MIN(timestamp) AS first_call, MAX(timestamp) AS last_call,
+           ROUND((julianday(MAX(timestamp)) - julianday(MIN(timestamp))) * 24 * 60, 1) AS duration_min
+    FROM usage_log
+    WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+      AND session_id IS NOT NULL AND http_status BETWEEN 200 AND 299
+    GROUP BY session_id ORDER BY cost DESC LIMIT 20
+  `);
+  const totalCost = sessions.reduce((s, r) => s + (r.cost || 0), 0);
+  res.json({
+    sessions: sessions.map(s => ({ ...s, cost: parseFloat((s.cost || 0).toFixed(4)), models: s.models ? s.models.split(',') : [] })),
+    total_cost: parseFloat(totalCost.toFixed(2)),
+    total_calls: sessions.reduce((s, r) => s + (r.calls || 0), 0),
+    session_count: sessions.length,
+  });
+});
+
+app.get('/api/judge-stats', (req, res) => {
+  res.json({ by_gate: [], recent: [] });
+});
+
+app.get('/api/cache-estimation', (req, res) => {
+  const stats = query(`
+    SELECT upstream, cache_estimated, COUNT(*) AS calls,
+           SUM(cache_read_tokens) AS total_cache_read,
+           SUM(cache_write_tokens) AS total_cache_write,
+           SUM(estimated_cost_usd) AS total_cost
+    FROM usage_log
+    WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+    GROUP BY upstream, cache_estimated ORDER BY total_cost DESC
+  `);
+  res.json({ rows: stats, summary: { estimated_calls: 0, estimated_cost: 0, actual_calls: 0, actual_cost: 0 } });
+});
+
+// Favicon
+const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="#0d1117" stroke="#58a6ff" stroke-width="2"/><text x="16" y="21" text-anchor="middle" font-size="14" font-family="monospace" fill="#58a6ff">T</text></svg>`;
+app.get('/favicon.ico', (req, res) => {
+  res.set('Content-Type', 'image/svg+xml');
+  res.set('Cache-Control', 'public, max-age=86400');
+  res.send(FAVICON_SVG);
+});
+
 // --- Admin endpoints (admin role required) ---
 app.use('/admin', requireAdmin);
 
