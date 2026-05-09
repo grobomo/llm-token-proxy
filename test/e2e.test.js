@@ -710,6 +710,41 @@ describe('E2E: Token Proxy', { timeout: 30000 }, () => {
   });
 
   // =========================================================================
+  // CSV export
+  // =========================================================================
+
+  describe('/api/export', () => {
+    it('returns CSV content with headers', async () => {
+      const res = await fetch(`http://127.0.0.1:${PROXY_PORT}/api/export?range=24h`);
+      assert.equal(res.status, 200);
+      assert.ok(res.headers.get('content-type').includes('text/csv'));
+      assert.ok(res.headers.get('content-disposition').includes('attachment'));
+      const body = await res.text();
+      const firstLine = body.split('\n')[0];
+      assert.ok(firstLine.includes('timestamp'));
+      assert.ok(firstLine.includes('model'));
+      assert.ok(firstLine.includes('estimated_cost_usd'));
+    });
+  });
+
+  // =========================================================================
+  // API index
+  // =========================================================================
+
+  describe('/api/', () => {
+    it('returns self-documenting endpoint list', async () => {
+      const { status, json } = await req('GET', '/api/');
+      assert.equal(status, 200);
+      assert.equal(json.name, 'Token Tracker API');
+      assert.ok(Array.isArray(json.endpoints));
+      assert.ok(json.endpoints.length >= 10);
+      const paths = json.endpoints.map(e => e.path);
+      assert.ok(paths.includes('/api/summary'));
+      assert.ok(paths.includes('/api/export'));
+    });
+  });
+
+  // =========================================================================
   // 404 catch-all
   // =========================================================================
 

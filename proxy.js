@@ -550,6 +550,14 @@ app.get('/dashboard', (req, res) => {
   res.sendFile(path.join(__dirname, 'dashboard', 'index.html'));
 });
 
+// Inline SVG favicon (dark theme token icon)
+const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="#0d1117" stroke="#58a6ff" stroke-width="2"/><text x="16" y="21" text-anchor="middle" font-size="14" font-family="monospace" fill="#58a6ff">T</text></svg>`;
+app.get('/favicon.ico', (req, res) => {
+  res.set('Content-Type', 'image/svg+xml');
+  res.set('Cache-Control', 'public, max-age=86400');
+  res.send(FAVICON_SVG);
+});
+
 // Root redirect
 app.get('/', (req, res) => res.redirect('/dashboard'));
 

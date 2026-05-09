@@ -35,3 +35,6 @@ backups/
 
 # Screenshots (dashboard verification artifacts)
 dashboard-*.png
+
+# Playwright MCP artifacts
+.playwright-mcp/

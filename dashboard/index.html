@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%230d1117' stroke='%2358a6ff' stroke-width='2'/><text x='16' y='21' text-anchor='middle' font-size='14' font-family='monospace' fill='%2358a6ff'>T</text></svg>" />
   <title>Token Tracker</title>
   <style>
     :root {
@@ -271,6 +272,7 @@
   </select>
   <span class="total" id="trend-label"></span>
   <span class="total" id="total-label">—</span>
+  <button id="export-btn" title="Export CSV" style="background:var(--bg);color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:12px;cursor:pointer" onclick="exportCSV()">CSV</button>
 </header>
 
 <div class="health-bar" id="health-bar">
@@ -325,7 +327,7 @@
 const COLORS = ['#58a6ff','#3fb950','#d29922','#f85149','#db6d28','#a371f7','#79c0ff','#56d364','#e3b341','#ff7b72'];
 
 function shortModel(name) {
-  const short = name.replace(/^claude-/, '').replace(/-20\d{6}$/, '');
+  const short = esc(name.replace(/^claude-/, '').replace(/-20\d{6}$/, ''));
   if (name.includes('-aws')) return short + ' <span style="opacity:0.5;font-size:10px">[RDsec]</span>';
   if (name.includes('opus') || name.includes('sonnet') || name.includes('haiku')) return short + ' <span style="opacity:0.5;font-size:10px">[C4E]</span>';
   return short;
@@ -392,7 +394,7 @@ function renderChart(data) {
     const legend = models.slice(0, 6).map(m => `
       <div class="legend-item">
         <div class="legend-dot" style="background:${modelColors[m.model] || 'var(--accent)'}"></div>
-        <span>${esc(shortModel(m.model))}</span>
+        <span>${shortModel(m.model)}</span>
         <span class="legend-cost">${fmtCost(m.cost)}</span>
       </div>
     `).join('');
@@ -476,7 +478,7 @@ function renderBreakdown(data) {
   el.innerHTML = models.map((m, i) => `
     <div class="model-row">
       <div class="model-dot" style="background:${COLORS[i % COLORS.length]}"></div>
-      <span class="model-name">${esc(shortModel(m.model))}</span>
+      <span class="model-name">${shortModel(m.model)}</span>
       <span class="model-calls">${m.calls} calls</span>
       <span class="model-cost">${fmtCost(m.cost)}</span>
     </div>
@@ -705,6 +707,11 @@ function refreshAll() {
   loadBreakdown();
   loadSavings();
   loadProjectCosts();
+}
+
+function exportCSV() {
+  const range = rangeParam();
+  window.open(`/api/export?range=${range}&format=csv`, '_blank');
 }
 
 document.getElementById('range-select').addEventListener('change', refreshAll);

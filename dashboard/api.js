@@ -18,6 +18,34 @@ router.get('/cache-stats', (req, res) => {
   res.json(apiCache.stats());
 });
 
+// ---------------------------------------------------------------------------
+// GET /api/ — Self-documenting API index
+// ---------------------------------------------------------------------------
+router.get('/', (req, res) => {
+  res.set('X-Cache', 'BYPASS');
+  res.json({
+    name: 'Token Tracker API',
+    version: '0.1.0',
+    endpoints: [
+      { method: 'GET', path: '/api/', description: 'This index - lists all endpoints' },
+      { method: 'GET', path: '/api/summary', description: 'Dashboard summary (totals, by consumer/model/project)', params: ['period=today|7d|30d|all'] },
+      { method: 'GET', path: '/api/usage', description: 'Query usage rows', params: ['period=today|7d|30d|all', 'group=consumer|model|project|task|none', 'consumer=<filter>', 'limit=<n>'] },
+      { method: 'GET', path: '/api/budget', description: 'Monthly budget status vs configured limit' },
+      { method: 'GET', path: '/api/hourly', description: 'Hourly spend for spike chart', params: ['period=today|7d'] },
+      { method: 'GET', path: '/api/hourly-breakdown', description: 'Hourly spend with model + project breakdown', params: ['range=1h|6h|12h|24h|7d|30d'] },
+      { method: 'GET', path: '/api/top-operations', description: 'Top N most expensive calls', params: ['period=today|7d|30d', 'limit=<n>'] },
+      { method: 'GET', path: '/api/cost-breakdown', description: 'Model-level cost + cache economics', params: ['range=1h|6h|12h|24h|7d|30d'] },
+      { method: 'GET', path: '/api/project-costs', description: 'Top projects by cost', params: ['range=1h|6h|12h|24h|7d|30d'] },
+      { method: 'GET', path: '/api/savings-potential', description: 'Cost optimization levers', params: ['range=1h|6h|12h|24h|7d|30d'] },
+      { method: 'GET', path: '/api/daily-comparison', description: 'Today vs yesterday spend', params: ['tz_offset=<minutes>'] },
+      { method: 'GET', path: '/api/cache-estimation', description: 'Cache estimation stats (estimated vs actual)', params: ['range=1h|6h|12h|24h|7d|30d'] },
+      { method: 'GET', path: '/api/cache-stats', description: 'Response cache hit/miss stats' },
+      { method: 'GET', path: '/api/export', description: 'Download usage data as CSV', params: ['range=1h|6h|12h|24h|7d|30d'] },
+      { method: 'POST', path: '/api/backfill-cache', description: 'Retroactively estimate cache tokens (localhost only)', params: ['body: {dryRun: true|false}'] },
+    ],
+  });
+});
+
 // Parse ?range= query param into SQL interval. Defaults to 24h.
 function parseRange(req) {
   const r = req.query.range || '24h';
@@ -546,6 +574,53 @@ router.post('/backfill-cache', (req, res) => {
       details: details.length <= 100 ? details : details.slice(0, 100),
       truncated: details.length > 100,
     });
+  } catch (err) {
+    res.status(500).json({ error: 'internal_error', message: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/export
+// Download usage data as CSV for the selected range.
+// Query params: range (default: 24h), format (csv only for now)
+// ---------------------------------------------------------------------------
+router.get('/export', (req, res) => {
+  try {
+    const interval = parseRange(req);
+    const rows = db.query(`
+      SELECT
+        timestamp, model, upstream, consumer, project, session_id,
+        input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+        cache_estimated, estimated_cost_usd, http_status, duration_ms
+      FROM usage_log
+      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
+      ORDER BY timestamp DESC
+    `);
+
+    const cols = [
+      'timestamp', 'model', 'upstream', 'consumer', 'project', 'session_id',
+      'input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_tokens',
+      'cache_estimated', 'estimated_cost_usd', 'http_status', 'duration_ms',
+    ];
+
+    const csvEsc = (v) => {
+      if (v == null) return '';
+      const s = String(v);
+      return s.includes(',') || s.includes('"') || s.includes('\n')
+        ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const lines = [cols.join(',')];
+    for (const row of rows) {
+      lines.push(cols.map(c => csvEsc(row[c])).join(','));
+    }
+
+    const range = req.query.range || '24h';
+    const filename = `token-usage-${range}-${new Date().toISOString().slice(0, 10)}.csv`;
+    res.set('Content-Type', 'text/csv');
+    res.set('Content-Disposition', `attachment; filename="${filename}"`);
+    res.set('X-Cache', 'BYPASS');
+    res.send(lines.join('\n'));
   } catch (err) {
     res.status(500).json({ error: 'internal_error', message: err.message });
   }
