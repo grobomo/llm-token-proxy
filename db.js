@@ -282,6 +282,14 @@ function getBudgetStatus(monthlyLimit = 100) {
 }
 
 /**
+ * Run a raw read-only SQL query. For dashboard use only.
+ */
+function query(sql) {
+  if (!db) throw new Error('Database not initialized');
+  return db.prepare(sql).all();
+}
+
+/**
  * Close the database connection cleanly.
  */
 function close() {
@@ -291,4 +299,4 @@ function close() {
   }
 }
 
-module.exports = { init, logUsage, getUsage, getTotals, getBudgetStatus, close };
+module.exports = { init, logUsage, getUsage, getTotals, getBudgetStatus, query, close };

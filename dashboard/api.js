@@ -115,4 +115,60 @@ router.get('/summary', (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// GET /api/hourly
+// Hourly spend breakdown for spike chart.
+// Query params: period = today | 7d (default: today)
+// ---------------------------------------------------------------------------
+router.get('/hourly', (req, res) => {
+  try {
+    const period = req.query.period === '7d' ? '7d' : 'today';
+    const periodClause = period === '7d'
+      ? `timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-7 days')`
+      : `timestamp >= strftime('%Y-%m-%dT00:00:00Z', 'now')`;
+
+    const sql = period === '7d'
+      ? `SELECT date(timestamp) || ' ' || strftime('%H', timestamp) || ':00' AS bucket,
+              SUM(estimated_cost_usd) AS cost, COUNT(*) AS calls
+         FROM usage_log WHERE ${periodClause} GROUP BY bucket ORDER BY bucket`
+      : `SELECT strftime('%H', timestamp) || ':00' AS bucket,
+              SUM(estimated_cost_usd) AS cost, COUNT(*) AS calls
+         FROM usage_log WHERE ${periodClause} GROUP BY bucket ORDER BY bucket`;
+
+    const rows = db.query ? db.query(sql) : [];
+    res.json({ period, rows });
+  } catch (err) {
+    res.status(500).json({ error: 'internal_error', message: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/top-operations
+// Top N most expensive individual calls.
+// Query params: period = today | 7d | 30d (default: today), limit (default: 10)
+// ---------------------------------------------------------------------------
+router.get('/top-operations', (req, res) => {
+  try {
+    const period = ['today', '7d', '30d'].includes(req.query.period) ? req.query.period : 'today';
+    const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+
+    let periodClause;
+    switch (period) {
+      case '7d':  periodClause = `timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-7 days')`; break;
+      case '30d': periodClause = `timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-30 days')`; break;
+      default:    periodClause = `timestamp >= strftime('%Y-%m-%dT00:00:00Z', 'now')`;
+    }
+
+    const rows = db.getUsage({ period, group: 'none', limit });
+    const sorted = rows
+      .filter(r => r.estimated_cost_usd > 0)
+      .sort((a, b) => b.estimated_cost_usd - a.estimated_cost_usd)
+      .slice(0, limit);
+
+    res.json({ period, rows: sorted });
+  } catch (err) {
+    res.status(500).json({ error: 'internal_error', message: err.message });
+  }
+});
+
 module.exports = router;

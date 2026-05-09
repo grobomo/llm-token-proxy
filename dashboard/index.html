@@ -246,6 +246,31 @@
     </div>
   </div>
 
+  <!-- Spike Chart -->
+  <div class="panel" style="margin-bottom:24px">
+    <h2>Hourly Spend</h2>
+    <div class="hint">Cost per hour — spikes indicate heavy usage bursts or new session cache writes.</div>
+    <div id="spike-chart" style="height:120px; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:12px; display:flex; align-items:flex-end; gap:2px; overflow:hidden;"></div>
+  </div>
+
+  <!-- Top Operations -->
+  <div class="panel" style="margin-bottom:24px">
+    <h2>Top Expensive Calls</h2>
+    <div class="hint">Single most expensive API calls in this period.</div>
+    <div class="table-wrap"><table>
+      <thead><tr>
+        <th>Time</th>
+        <th>Model</th>
+        <th>Consumer</th>
+        <th class="right">In</th>
+        <th class="right">Out</th>
+        <th class="right">Cache W</th>
+        <th class="right">Cost</th>
+      </tr></thead>
+      <tbody id="top-ops-rows"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+    </table></div>
+  </div>
+
   <div class="grid-2">
     <div class="panel">
       <h2>By Source</h2>
@@ -415,7 +440,7 @@
       currentPeriod = btn.dataset.period;
       secondsLeft = REFRESH_INTERVAL;
       $('countdown').textContent = secondsLeft;
-      loadData();
+      loadAll();
     });
   });
 
@@ -427,11 +452,54 @@
     $('countdown').textContent = secondsLeft;
     if (secondsLeft <= 0) {
       secondsLeft = REFRESH_INTERVAL;
-      loadData();
+      loadAll();
     }
   }
 
-  loadData();
+  async function loadSpikeChart() {
+    try {
+      const period = currentPeriod === '7d' ? '7d' : 'today';
+      const r = await fetch(`/api/hourly?period=${period}`);
+      if (!r.ok) return;
+      const data = await r.json();
+      const rows = data.rows || [];
+      if (rows.length === 0) { $('spike-chart').innerHTML = '<span class="empty">No data</span>'; return; }
+      const maxCost = Math.max(...rows.map(r => r.cost || 0), 0.01);
+      $('spike-chart').innerHTML = rows.map(r => {
+        const h = Math.max(2, ((r.cost || 0) / maxCost) * 100);
+        const color = r.cost > maxCost * 0.7 ? 'var(--red)' : r.cost > maxCost * 0.4 ? 'var(--yellow)' : 'var(--accent)';
+        return `<div title="${r.bucket}: $${(r.cost||0).toFixed(2)} (${r.calls} calls)" style="flex:1;min-width:4px;height:${h}%;background:${color};border-radius:2px 2px 0 0;"></div>`;
+      }).join('');
+    } catch {}
+  }
+
+  async function loadTopOps() {
+    try {
+      const r = await fetch(`/api/top-operations?period=${currentPeriod}&limit=8`);
+      if (!r.ok) return;
+      const data = await r.json();
+      const rows = data.rows || [];
+      if (rows.length === 0) { $('top-ops-rows').innerHTML = '<tr><td colspan="7" class="empty">No data</td></tr>'; return; }
+      $('top-ops-rows').innerHTML = rows.map(r => {
+        const time = r.timestamp ? new Date(r.timestamp).toLocaleTimeString() : '—';
+        return `<tr>
+          <td class="mono">${time}</td>
+          <td class="mono">${(r.model||'—').slice(0,20)}</td>
+          <td>${r.consumer||'—'}</td>
+          <td class="right mono">${fmtTokens(r.input_tokens)}</td>
+          <td class="right mono">${fmtTokens(r.output_tokens)}</td>
+          <td class="right mono">${fmtTokens(r.cache_write_tokens)}</td>
+          <td class="right mono">${fmtCost(r.estimated_cost_usd)}</td>
+        </tr>`;
+      }).join('');
+    } catch {}
+  }
+
+  async function loadAll() {
+    await Promise.all([loadData(), loadSpikeChart(), loadTopOps()]);
+  }
+
+  loadAll();
   setInterval(tick, 1000);
 </script>
 </body>
