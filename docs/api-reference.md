@@ -249,6 +249,62 @@ All requests to `/v1/*` are forwarded to the matching upstream based on API key 
 
 **Usage logging:** Every proxied request logs token usage and cost to SQLite. Streaming responses (SSE) are parsed for usage data in `message_delta` / `message_stop` events.
 
+## Dashboard API
+
+All dashboard endpoints are public (no auth). Most accept a `?range=` parameter: `1h`, `6h`, `12h`, `24h` (default), `7d`, `30d`.
+
+### GET /api/
+
+Self-documenting endpoint index. Returns all available endpoints with descriptions and parameters.
+
+### GET /api/summary
+
+All dashboard data in one request: totals, by-consumer, by-model, by-project, by-task. Accepts `?period=today|7d|30d|all`.
+
+### GET /api/sessions
+
+Per-session cost analytics. Groups by `session_id` (from Claude Code's `X-Claude-Code-Session-Id` header).
+
+```json
+{
+  "sessions": [
+    { "session_id": "abc...", "project": "my-project", "calls": 48, "cost": 17.25, "duration_min": 45.2, "models": ["claude-4.6-opus-aws"] }
+  ],
+  "total_cost": 17.25,
+  "session_count": 1
+}
+```
+
+### GET /api/export
+
+Downloads usage data as CSV. Opens as a file download in the browser.
+
+`GET /api/export?range=7d` → `token-usage-7d-2026-05-09.csv`
+
+### GET /api/hourly-breakdown
+
+Hourly spend with model + project breakdown per hour. Used by the stacked bar chart.
+
+### GET /api/cost-breakdown
+
+Model-level cost breakdown with cache economics (cache_read, cache_write, estimated vs actual).
+
+### GET /api/project-costs
+
+Top 10 projects by cost. Excludes failed calls (HTTP 4xx/5xx).
+
+### GET /api/savings-potential
+
+Cost optimization levers: session restart count, cache write cost, savings per fewer restart.
+
+### GET /api/daily-comparison
+
+Today's spend vs yesterday. Accepts `?tz_offset=<minutes>` for timezone adjustment.
+
+### GET /api/cache-stats
+
+Response cache hit/miss statistics. Bypasses the cache itself.
+
 ## GET /health
 
 No auth required. Returns proxy and upstream status.
