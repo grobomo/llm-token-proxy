@@ -213,6 +213,55 @@ app.get('/diagnose', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Judge endpoint (T118) — semantic gate decisions via Haiku
+// ---------------------------------------------------------------------------
+const judge = require('./lib/judge');
+judge.init(config.db || path.resolve(__dirname, 'usage.db'));
+
+app.post('/judge', async (req, res) => {
+  const body = req.body?.length > 0 ? JSON.parse(req.body.toString('utf8')) : {};
+  const { question, context, gate, project, session_id, fallback } = body;
+
+  if (!question || !gate) {
+    return res.status(400).json({ error: 'missing_fields', required: ['question', 'gate'] });
+  }
+
+  const apiKey = extractApiKey(req);
+  if (!apiKey) {
+    return res.status(401).json({ error: 'missing_api_key' });
+  }
+
+  const proxyUrl = `http://127.0.0.1:${PORT}`;
+  const result = await judge.callHaiku(question, context, proxyUrl, apiKey);
+
+  let decision, fallbackUsed = false;
+  if (result.allow === null && fallback !== undefined) {
+    decision = fallback ? 'allow' : 'block';
+    fallbackUsed = true;
+  } else {
+    decision = result.allow ? 'allow' : 'block';
+  }
+
+  judge.logDecision({
+    gate, project, session_id, question, context,
+    decision, reason: result.reason, confidence: result.confidence,
+    latency_ms: result.latencyMs, fallback_used: fallbackUsed,
+  });
+
+  res.json({
+    allow: decision === 'allow',
+    reason: result.reason,
+    confidence: result.confidence,
+    latency_ms: result.latencyMs,
+    fallback_used: fallbackUsed,
+  });
+});
+
+app.get('/api/judge-stats', (req, res) => {
+  res.json(judge.getStats());
+});
+
+// ---------------------------------------------------------------------------
 // Dashboard routes
 // ---------------------------------------------------------------------------
 const dashboardApi = require('./dashboard/api');
