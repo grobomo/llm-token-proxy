@@ -1,38 +1,28 @@
 # TODO
 
-## Session State (2026-05-09 15:30 CDT)
+## Session State (2026-05-09 15:54 CDT)
 
-**Windows fork** of `llm-token-proxy`. Published to `grobomo/llm-token-proxy` (public). All commits pushed through `55e6fbc`.
+**Windows fork** of `llm-token-proxy`. Published to `grobomo/llm-token-proxy` (public). All commits pushed through `d889edf`.
 
 ### Session handoff (context-reset)
 
-**What was done this session (2026-05-09 afternoon):**
-1. **T131: safe-restart.sh sync** — copied fixed version (pre-flight + retry) to both WSL git repo and deployed location at `~/.openclaw/workspace/token-proxy/scripts/`
-2. **T132: Cache cost estimation** — Major feature. `lib/cache-estimator.js`:
-   - Production data analysis: RDSec returns `prompt_tokens` as non-cached only (`input_tokens=1` for all Opus). Cache tokens completely invisible.
-   - Heuristic: for non-Anthropic upstreams with Claude models, estimates cache_write (60K, first call) or cache_read (200K, subsequent)
-   - Schema v6: `cache_estimated` column on usage_log
-   - `/api/cache-estimation` endpoint for dashboard
-   - Fixed pre-existing bug: non-streaming path missing OpenAI→Anthropic field normalization (`prompt_tokens`→`input_tokens`)
-   - SQL injection hardening: sessionId sanitized to UUID chars only
-   - 13 unit tests + 27 e2e = 40 total pass
-   - Deployed to WSL, verified live: dashboard shows estimated cache data with `est` badge
-3. **T134: Dashboard UX** — added per-project cost breakdown panel (`/api/project-costs`), horizontal bar chart, top 10 projects
-4. **Git merge** — merged remote origin (WSL-era commits) into Windows fork, resolved all conflicts keeping Windows as authoritative
-5. **README updated** — documented cache estimation feature, bumped test count
+**What was done this session (2026-05-09 evening):**
+1. **T135: Cache backfill** — `POST /api/backfill-cache` endpoint. Retroactively estimated cache tokens for 64 historical RDSec calls. Cost jumped from $1.71 to $17.25 (10x more accurate). Localhost-only, dry-run by default. Also: `db.run()` for write ops, `cache.clear()`, `scripts/backfill-cache-estimates.js` standalone script.
+2. **T136: Dashboard data quality** — Filter HTTP 400/500 calls from cost-breakdown and project-costs panels. Removes noise from failed hook-system judge calls (25 calls at $0).
+3. **T137: Dashboard UX polish** — `fmtCost` now uses `$0.0001` format for sub-cent values (was `$0.01c`). Hourly chart bars use flex layout with max-width for better sizing with sparse data.
+4. **Test fixes** — `npm test` now runs both test files (was missing cache-estimator.test.js). 41 tests pass.
+5. **Cleanup** — `.gitignore` excludes dashboard screenshot artifacts.
 
-**All changes synced to WSL** — both git repo and deployed proxy at `~/.openclaw/workspace/token-proxy/`. Proxy restarted and verified via safe-restart.sh after each deployment.
+**All changes synced to WSL** (both git repo and deployed). Proxy restarted and verified. Note: proxy runs from git repo at `/home/ubu/Documents/ProjectsCL1/_grobomo/llm-token-proxy`, not the deployed location.
 
 **Blueprint MCP sharp module still broken** — TODO written in `blueprint-extra-mcp/TODO.md`.
 
 ### Next session priorities
-- [x] T131: Sync safe-restart.sh fix back to WSL project (pre-flight + retry logic) — synced to both git repo and deployed location
-- [x] T132: Cache cost estimation — `lib/cache-estimator.js`. Production data revealed RDSec reports `prompt_tokens` as non-cached only (input_tokens=1 for all Opus calls). Redesigned heuristic: for non-Anthropic upstreams with Claude models and output>0, estimates cache_write (30% of 200K, first session call) or cache_read (200K, subsequent). Schema v6 `cache_estimated` column. `/api/cache-estimation` endpoint. Also fixed non-streaming path missing OpenAI→Anthropic field normalization (pre-existing bug: `in=undefined`). 13 unit tests + 27 e2e = 40 total pass. Deployed to WSL and verified live.
+- [x] T131–T132, T134–T137: All complete (see above + Completed section)
 - [ ] T133: Fix blueprint-extra sharp module — TODO written in blueprint-extra-mcp/TODO.md (cross-project)
 - [ ] T130: Cost source-of-truth — partially addressed by T132 (estimation). Needs Langfuse/Power BI for actual per-call data (requires Blueprint MCP SSO)
 - [ ] T129: Extract per-user Opus cost from RDSec Langfuse/Power BI (blocked by T133)
 - [ ] T111: Pluggable storage backend (Postgres) for multi-host deployments
-- [x] T134: Dashboard UX — per-project cost breakdown panel with horizontal bar chart. `/api/project-costs` endpoint, top 10 projects by cost (24h). Pushed to grobomo/llm-token-proxy.
 
 ---
 
