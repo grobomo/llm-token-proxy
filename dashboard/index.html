@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Token Proxy</title>
+  <title>Token Tracker</title>
   <style>
     :root {
       --bg:      #0d1117;
@@ -259,7 +259,7 @@
 <body>
 
 <header>
-  <h1>Token Proxy</h1>
+  <h1>Token Tracker</h1>
   <span class="total" id="trend-label"></span>
   <span class="total" id="total-label">—</span>
 </header>
@@ -308,7 +308,10 @@
 const COLORS = ['#58a6ff','#3fb950','#d29922','#f85149','#db6d28','#a371f7','#79c0ff','#56d364','#e3b341','#ff7b72'];
 
 function shortModel(name) {
-  return name.replace(/^claude-/, '').replace(/-20\d{6}$/, '');
+  const short = name.replace(/^claude-/, '').replace(/-20\d{6}$/, '');
+  if (name.includes('-aws')) return short + ' <span style="opacity:0.5;font-size:10px">[RDsec]</span>';
+  if (name.includes('opus') || name.includes('sonnet') || name.includes('haiku')) return short + ' <span style="opacity:0.5;font-size:10px">[C4E]</span>';
+  return short;
 }
 
 // Stable model→color map built from full dataset
@@ -534,7 +537,7 @@ async function loadTrend() {
     const todayCost = d.today?.cost || 0;
     const yesterdayCost = d.yesterday?.cost || 0;
     if (yesterdayCost > 0) {
-      el.textContent = `today ${fmtCost(todayCost)} / yesterday ${fmtCost(yesterdayCost)}`;
+      el.textContent = `today (UTC) ${fmtCost(todayCost)} / yesterday ${fmtCost(yesterdayCost)}`;
     } else {
       el.textContent = `today ${fmtCost(todayCost)}`;
     }
