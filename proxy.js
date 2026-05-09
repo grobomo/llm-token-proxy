@@ -213,56 +213,7 @@ app.get('/diagnose', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Judge endpoint (T118) — semantic gate decisions via Haiku
-// ---------------------------------------------------------------------------
-const judge = require('./lib/judge');
-judge.init(config.db || path.resolve(__dirname, 'usage.db'));
-
-app.post('/judge', async (req, res) => {
-  const body = req.body?.length > 0 ? JSON.parse(req.body.toString('utf8')) : {};
-  const { question, context, gate, project, session_id, fallback } = body;
-
-  if (!question || !gate) {
-    return res.status(400).json({ error: 'missing_fields', required: ['question', 'gate'] });
-  }
-
-  const apiKey = extractApiKey(req);
-  if (!apiKey) {
-    return res.status(401).json({ error: 'missing_api_key' });
-  }
-
-  const proxyUrl = `http://127.0.0.1:${PORT}`;
-  const result = await judge.callHaiku(question, context, proxyUrl, apiKey);
-
-  let decision, fallbackUsed = false;
-  if (result.allow === null && fallback !== undefined) {
-    decision = fallback ? 'allow' : 'block';
-    fallbackUsed = true;
-  } else {
-    decision = result.allow ? 'allow' : 'block';
-  }
-
-  judge.logDecision({
-    gate, project, session_id, question, context,
-    decision, reason: result.reason, confidence: result.confidence,
-    latency_ms: result.latencyMs, fallback_used: fallbackUsed,
-  });
-
-  res.json({
-    allow: decision === 'allow',
-    reason: result.reason,
-    confidence: result.confidence,
-    latency_ms: result.latencyMs,
-    fallback_used: fallbackUsed,
-  });
-});
-
-app.get('/api/judge-stats', (req, res) => {
-  res.json(judge.getStats());
-});
-
-// ---------------------------------------------------------------------------
-// Tiered /ask endpoints (T125) — general-purpose LLM calls at L1/L2/L3
+// Shared modules for tiered endpoints (T125/T126)
 // ---------------------------------------------------------------------------
 const ask = require('./lib/ask');
 const rateLimit = require('./lib/rate-limit');
@@ -276,6 +227,169 @@ function internalOnly(req, res, next) {
   if (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1') return next();
   res.status(403).json({ error: 'internal_only' });
 }
+
+// ---------------------------------------------------------------------------
+// Judge endpoint (T118/T126) — semantic gate decisions with tiered escalation
+// ---------------------------------------------------------------------------
+const judge = require('./lib/judge');
+judge.init(config.db || path.resolve(__dirname, 'usage.db'));
+
+app.post('/judge', async (req, res) => {
+  const body = req.body?.length > 0 ? JSON.parse(req.body.toString('utf8')) : {};
+  const { question, context, gate, project, session_id, fallback, sync, critical, webhook_url } = body;
+
+  if (!question || !gate) {
+    return res.status(400).json({ error: 'missing_fields', required: ['question', 'gate'] });
+  }
+
+  const apiKey = extractApiKey(req);
+  if (!apiKey) {
+    return res.status(401).json({ error: 'missing_api_key' });
+  }
+
+  const proxyUrl = `http://127.0.0.1:${PORT}`;
+  const result = await judge.callTier('L1', question, context, proxyUrl, apiKey);
+
+  let decision, fallbackUsed = false;
+  if (result.allow === null && fallback !== undefined) {
+    decision = fallback ? 'allow' : 'block';
+    fallbackUsed = true;
+  } else {
+    decision = result.allow ? 'allow' : 'block';
+  }
+
+  judge.logDecision({
+    gate, project, session_id, question, context,
+    decision, reason: result.reason, confidence: result.confidence,
+    latency_ms: result.latencyMs, fallback_used: fallbackUsed, tier: 'L1',
+  });
+
+  if (result.confidence !== null && result.confidence < 0.7 && !fallbackUsed) {
+    const ticketId = escalation.createEscalation({
+      caller: `judge-${gate}`, gate, tierChain: ['L1', 'L2'], request: body, webhookUrl: webhook_url,
+    });
+    escalation.addTierResponse(ticketId, { tier: 'L1', ...result, decision });
+    escalation.writeNotes(ticketId, 'L1', `# Judge Escalation ${ticketId} — L1\n\n**Gate:** ${gate}\n**Confidence:** ${result.confidence}\n**Decision:** ${decision}\n**Reason:** ${result.reason}\n`);
+
+    if (sync) {
+      const l2Result = await Promise.race([
+        judge.callTier('L2', question, context, proxyUrl, apiKey),
+        new Promise(resolve => setTimeout(() => resolve(null), 8000)),
+      ]);
+      if (l2Result && l2Result.allow !== null) {
+        const l2Decision = l2Result.allow ? 'allow' : 'block';
+        escalation.resolveEscalation(ticketId, { tier: 'L2', ...l2Result, decision: l2Decision });
+        judge.logDecision({
+          gate, project, session_id, question, context,
+          decision: l2Decision, reason: l2Result.reason, confidence: l2Result.confidence,
+          latency_ms: l2Result.latencyMs, tier: 'L2', escalated_from: 'L1',
+          escalation_reason: `L1 confidence ${result.confidence} < 0.7`,
+        });
+        return res.json({
+          allow: l2Decision === 'allow', reason: l2Result.reason,
+          confidence: l2Result.confidence, latency_ms: l2Result.latencyMs,
+          tier: 'L2', escalated_from: 'L1', ticket_id: ticketId,
+        });
+      }
+      escalation.timeoutEscalation(ticketId, { tier: 'L1', decision, reason: result.reason });
+      return res.json({
+        allow: decision === 'allow', reason: result.reason,
+        confidence: result.confidence, latency_ms: result.latencyMs,
+        tier: 'L1', partial: true, ticket_id: ticketId, fallback_used: fallbackUsed,
+      });
+    }
+
+    escalation.runBackground(ticketId, 'L2', {
+      system: `You are a gate judge. Answer with JSON: {"allow": true|false, "reason": "string", "confidence": 0.0-1.0}\n\nQuestion: ${question}\n${context ? `Context: ${context}` : ''}`,
+      prompt: question, caller: `judge-${gate}`, maxTokens: 500, jsonMode: true,
+    }, proxyUrl, apiKey, ask);
+
+    return res.json({
+      allow: decision === 'allow', reason: result.reason,
+      confidence: result.confidence, latency_ms: result.latencyMs,
+      tier: 'L1', fallback_used: fallbackUsed,
+      escalation: { status: 'escalating', ticket_id: ticketId, poll_url: `/escalation/${ticketId}` },
+    });
+  }
+
+  res.json({
+    allow: decision === 'allow', reason: result.reason,
+    confidence: result.confidence, latency_ms: result.latencyMs,
+    tier: 'L1', fallback_used: fallbackUsed,
+  });
+});
+
+app.post('/judge/l2', internalOnly, async (req, res) => {
+  const limit = rateLimit.check('judge-l2', 50);
+  if (!limit.allowed) {
+    return res.status(429).json({ error: 'rate_limited', remaining: 0, reset_at: new Date(limit.resetAt).toISOString() });
+  }
+
+  const body = req.body?.length > 0 ? JSON.parse(req.body.toString('utf8')) : {};
+  const { question, context, gate, project, session_id, escalation_reason } = body;
+
+  if (!question || !gate) return res.status(400).json({ error: 'missing_fields', required: ['question', 'gate'] });
+
+  const apiKey = extractApiKey(req);
+  if (!apiKey) return res.status(401).json({ error: 'missing_api_key' });
+
+  const proxyUrl = `http://127.0.0.1:${PORT}`;
+  const result = await judge.callTier('L2', question, context, proxyUrl, apiKey);
+
+  const decision = result.allow === null ? 'error' : (result.allow ? 'allow' : 'block');
+  judge.logDecision({
+    gate, project, session_id, question, context,
+    decision, reason: result.reason, confidence: result.confidence,
+    latency_ms: result.latencyMs, tier: 'L2',
+    escalated_from: body.escalated_from || null, escalation_reason: escalation_reason || null,
+  });
+
+  res.json({
+    allow: decision === 'allow', reason: result.reason,
+    confidence: result.confidence, latency_ms: result.latencyMs,
+    tier: 'L2', remaining_quota: limit.remaining,
+  });
+});
+
+app.post('/judge/l3', internalOnly, async (req, res) => {
+  const limit = rateLimit.check('judge-l3', 10);
+  if (!limit.allowed) {
+    return res.status(429).json({ error: 'rate_limited', remaining: 0, reset_at: new Date(limit.resetAt).toISOString() });
+  }
+
+  const body = req.body?.length > 0 ? JSON.parse(req.body.toString('utf8')) : {};
+  const { question, context, gate, project, session_id, escalation_reason } = body;
+
+  if (!question || !gate) return res.status(400).json({ error: 'missing_fields', required: ['question', 'gate'] });
+
+  const apiKey = extractApiKey(req);
+  if (!apiKey) return res.status(401).json({ error: 'missing_api_key' });
+
+  const proxyUrl = `http://127.0.0.1:${PORT}`;
+  const result = await judge.callTier('L3', question, context, proxyUrl, apiKey);
+
+  const decision = result.allow === null ? 'error' : (result.allow ? 'allow' : 'block');
+  judge.logDecision({
+    gate, project, session_id, question, context,
+    decision, reason: result.reason, confidence: result.confidence,
+    latency_ms: result.latencyMs, tier: 'L3',
+    escalated_from: body.escalated_from || null, escalation_reason: escalation_reason || null,
+  });
+
+  res.json({
+    allow: decision === 'allow', reason: result.reason,
+    confidence: result.confidence, latency_ms: result.latencyMs,
+    tier: 'L3', remaining_quota: limit.remaining,
+  });
+});
+
+app.get('/api/judge-stats', (req, res) => {
+  res.json(judge.getStats());
+});
+
+// ---------------------------------------------------------------------------
+// Tiered /ask endpoints (T125) — general-purpose LLM calls at L1/L2/L3
+// ---------------------------------------------------------------------------
 
 const RATE_LIMITS = { L2: 100, L3: 20 };
 

@@ -127,7 +127,7 @@ All systemd timers active: spike-detect (30min), watchdog (5min), daily-report (
 
 ## High (Haiku /ask endpoint)
 
-- [ ] T125: Tiered LLM endpoints — internal escalation architecture:
+- [x] T125: Tiered LLM endpoints — internal escalation architecture (commit 51e4772):
 
   **`POST /ask`** (L1 — Haiku, $0.001/call, public)
   General-purpose Haiku caller. Fast, cheap, high-volume. Used by: L1 preprocessor, stop-analysis, gate judges, any hook needing quick structured output.
