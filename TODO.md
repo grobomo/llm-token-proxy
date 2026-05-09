@@ -1,28 +1,36 @@
 # TODO
 
-## Session State (2026-05-09)
+## Session State (2026-05-09 14:35 CDT)
 
-Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `4a657c2`.
-Schema v5 active (original_model column). Model override infrastructure deployed but no active rules.
-E2E test suite added: 27 tests covering /health, /v1/messages, /ask (L1/L2/L3), /judge (L1/L2/L3), /escalation, rate limits, stats, streaming SSE.
-Bug fixed: proxy no longer crashes on unknown API key prefix (graceful 400 instead of unhandled throw).
+**This is the Windows fork** of `llm-token-proxy` from WSL. Forked via zip backup, fresh git repo for grobomo. Initial commit `8a5930d`. 27/27 tests pass.
+
+WSL original at `/home/ubu/Documents/ProjectsCL1/_grobomo/llm-token-proxy` is untouched.
+Backup zip at `backups/llm-token-proxy.zip`. Original git history at `archive/.git-wsl-original`.
 
 ### Session handoff (context-reset)
-Blueprint MCP is now configured in `~/.claude/.mcp.json`. This session couldn't test it because MCP servers load at session start. The new session should have Blueprint tools available.
 
-**Immediate action for next session:**
-1. Check if Blueprint tools (`browser_navigate`, `browser_snapshot`, etc.) are available in your tool list
-2. If yes → do T129 immediately (navigate to RDSec portal, extract costs)
-3. If no → Chrome may not be running or extension not active. Tell user to open Chrome with Blueprint extension.
+**What was done this session:**
+1. Fixed WSL Claude 401 auth loop — deleted stale `~/.claude/.credentials.json` (expired enterprise OAuth taking priority over API key)
+2. Fixed Windows Terminal Ubuntu profile — set font size 19, hidden duplicate Canonical profile
+3. Forked llm-token-proxy from WSL → Windows, init fresh grobomo git repo
+4. **BUG FIX: safe-restart.sh** — added pre-flight check for config.yaml (refuses to restart without it), retry logic (2 retries instead of immediate give-up), journalctl error logging on failure
+5. **BUG FIX: watchdog.sh (deployed at ~/.openclaw/workspace/)** — patched to NOT remove `ANTHROPIC_BASE_URL` on proxy failure. Root cause of the 401 auth loop: watchdog killed proxy config, no valid direct Anthropic path exists for RDSec JWT auth
+6. Restored config.yaml to WSL git repo (was missing, copied from workspace), proxy restarted successfully
+7. Investigated cost discrepancy — RDSec responses omit `cache_creation_input_tokens` and `cache_read_input_tokens` (always 0). Proxy calculates correctly from what it sees but underestimates RDSec cost by the entire cache component (~$2.25/session start)
+8. Got RDSec portal data: $13K/30d org-wide, daily chart extracted. Most traces are Haiku/Sonnet not Opus (cost math confirms)
+
+**Blueprint MCP sharp module is broken** — `browser_take_screenshot` fails on Windows. Use `browser_evaluate` + canvas.toDataURL workaround for charts, or Playwright for non-SSO pages.
+
+**safe-restart.sh fix is only in this Windows fork** — needs to be synced back to WSL project. The deployed version at `~/.openclaw/workspace/token-proxy/scripts/` still has the old version.
 
 ### Next session priorities
-- [ ] T129: Test Blueprint MCP from WSL — verify `browser_navigate` to RDSec portal + Claude.ai usage page works. Extract actual per-token costs for Opus 4.6 from both. Compare and document any discrepancy.
-- [ ] T130: Cost source-of-truth — RDSec vs C4E cost gap EXPLAINED (not a pricing bug):
-  - C4E (`claude-opus-4-6`): 559 calls, $157, reports 1.75M cache_write tokens ($32.78 at $18.75/M)
-  - RDSec (`claude-4.6-opus-aws`): 2546 calls, $55, reports 0 cache_write tokens
-  - Same per-token rate. Difference is cache_write attribution — RDSec LiteLLM gateway doesn't surface cache_write in responses.
-  - **Next step**: verify via Blueprint whether RDSec actually has prompt caching enabled (check their billing portal for cache line items). Depends on T129.
+- [ ] T131: Sync safe-restart.sh fix back to WSL project (pre-flight + retry logic)
+- [ ] T132: Implement cache cost estimation — when RDSec returns 0 cache tokens but input_tokens > 50K, estimate cache_write cost. Alternatively query Langfuse/Power BI for real data.
+- [ ] T133: Fix blueprint-extra sharp module — `npm install sharp` in the right location so screenshots work
+- [ ] T130: Cost source-of-truth — RDSec vs C4E cost gap is cache token visibility. RDSec LiteLLM strips cache fields. Check Langfuse/Power BI (tab already open) for per-model per-user breakdown with cache data.
+- [ ] T129: Extract per-user Opus cost from RDSec Langfuse/Power BI to compare against proxy estimates
 - [ ] T111: Pluggable storage backend (Postgres) for multi-host deployments.
+- [ ] T134: Dashboard UX improvements — user requested review. Current state screenshotted at `dashboard-full.png`.
 
 ---
 

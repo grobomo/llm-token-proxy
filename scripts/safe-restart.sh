@@ -4,12 +4,13 @@
 # Usage: bash safe-restart.sh
 #
 # Steps:
-#   1. Send SIGTERM to running proxy (triggers 5s drain of in-flight requests)
-#   2. Wait for old process to exit (up to 7s)
-#   3. Start new process
-#   4. Wait for health endpoint (up to 10s)
-#   5. Run e2e test (real Haiku call)
-#   6. If either fails: stop proxy, log failure, exit 1
+#   1. Pre-flight: verify config.yaml exists (refuse to restart without it)
+#   2. Send SIGTERM to running proxy (triggers 5s drain of in-flight requests)
+#   3. Wait for old process to exit (up to 7s)
+#   4. Start new process
+#   5. Wait for health endpoint (up to 10s)
+#   6. Run e2e test (real Haiku call)
+#   7. If health/e2e fails: attempt recovery restart (up to 2 retries)
 #
 # During drain window, the old proxy returns 503 + Retry-After: 2 for new
 # requests. Claude Code retries automatically on 503.
@@ -29,7 +30,22 @@ log() { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG"; }
 TEST_MODEL="claude-haiku-4-5"
 [[ -f "$WATCHDOG_CONF" ]] && source "$WATCHDOG_CONF"
 
+# Resolve proxy working directory from systemd unit
+PROXY_DIR=$(systemctl --user show token-proxy.service -p WorkingDirectory --value 2>/dev/null)
+if [[ -z "$PROXY_DIR" ]]; then
+    PROXY_DIR="$HOME/.openclaw/workspace/token-proxy"
+fi
+
 log "=== safe-restart begin ==="
+
+# 0. Pre-flight: config.yaml must exist or proxy will crash on startup
+if [[ ! -f "$PROXY_DIR/config.yaml" ]]; then
+    log "ABORT: $PROXY_DIR/config.yaml missing — refusing to restart"
+    log "  Proxy left running (if it was). Fix config.yaml first."
+    log "  Copy from config.example.yaml and add your upstreams."
+    log "=== safe-restart ABORTED (missing config) ==="
+    exit 2
+fi
 
 # 1. Graceful stop: SIGTERM triggers drain, then process exits cleanly
 PID=$(systemctl --user show token-proxy.service -p MainPID --value 2>/dev/null)
@@ -54,24 +70,43 @@ else
     log "no running proxy found — starting fresh"
 fi
 
-# 2. Start new process
-log "starting token-proxy.service..."
-systemctl --user start token-proxy.service
-
-# 3. Wait for health (up to 10s)
+# 2. Start new process with retry on failure
+MAX_RETRIES=2
+attempt=0
 healthy=false
-for i in $(seq 1 10); do
-    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "$PROXY_HEALTH" 2>/dev/null || echo "000")
-    if [[ "$code" == "200" ]]; then
-        healthy=true
-        log "health OK after ${i}s"
-        break
+
+while [[ $attempt -le $MAX_RETRIES && "$healthy" != "true" ]]; do
+    if [[ $attempt -gt 0 ]]; then
+        log "retry $attempt/$MAX_RETRIES — restarting proxy..."
+        systemctl --user stop token-proxy.service 2>/dev/null || true
+        sleep 2
     fi
-    sleep 1
+
+    log "starting token-proxy.service... (attempt $((attempt+1)))"
+    systemctl --user start token-proxy.service
+
+    # 3. Wait for health (up to 10s)
+    for i in $(seq 1 10); do
+        code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "$PROXY_HEALTH" 2>/dev/null || echo "000")
+        if [[ "$code" == "200" ]]; then
+            healthy=true
+            log "health OK after ${i}s"
+            break
+        fi
+        sleep 1
+    done
+
+    attempt=$((attempt + 1))
 done
 
 if [[ "$healthy" != "true" ]]; then
-    log "FAIL: health not 200 after 10s — stopping proxy"
+    log "FAIL: health not 200 after $((MAX_RETRIES+1)) attempts"
+    # Check journalctl for the actual error
+    last_error=$(journalctl --user -u token-proxy.service --no-pager -n 5 2>/dev/null | grep -i "error\|ENOENT\|Cannot find" | head -1)
+    if [[ -n "$last_error" ]]; then
+        log "  last error: $last_error"
+    fi
+    log "  proxy stopped. Manual intervention required."
     systemctl --user stop token-proxy.service
     exit 1
 fi
