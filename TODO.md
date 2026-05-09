@@ -63,7 +63,7 @@ All systemd timers active: spike-detect (30min), watchdog (5min), daily-report (
 
 - [x] T118: `POST /judge` endpoint — calls Haiku for semantic gate decisions, logs to `judge_log` table. `GET /api/judge-stats` for monitoring. Fallback support when Haiku unreachable.
 - [x] T119: `GET /api/judge-stats` — included in T118 implementation. Dashboard panel pending (next session).
-- [ ] T126: Tiered judge endpoints — escalation for binary decisions:
+- [x] T126: Tiered judge endpoints — escalation for binary decisions (commit 6ca6c4b):
 
   **`POST /judge`** (L1 — Haiku, existing, public)
   Fast binary allow/block for gate decisions. Current behavior unchanged.
