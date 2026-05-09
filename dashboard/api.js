@@ -203,4 +203,39 @@ router.get('/hourly-breakdown', (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// GET /api/cost-breakdown
+// Model-level cost breakdown + cache economics for the dashboard.
+// ---------------------------------------------------------------------------
+router.get('/cost-breakdown', (req, res) => {
+  try {
+    const models = db.query(`
+      SELECT
+        model,
+        COUNT(*) AS calls,
+        SUM(estimated_cost_usd) AS cost,
+        SUM(input_tokens) AS input_tokens,
+        SUM(output_tokens) AS output_tokens,
+        SUM(cache_read_tokens) AS cache_read_tokens,
+        SUM(cache_write_tokens) AS cache_write_tokens
+      FROM usage_log
+      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+      GROUP BY model
+      ORDER BY cost DESC
+    `);
+
+    const totals = models.reduce((acc, m) => {
+      acc.cost += m.cost || 0;
+      acc.calls += m.calls || 0;
+      acc.cache_write += m.cache_write_tokens || 0;
+      acc.cache_read += m.cache_read_tokens || 0;
+      return acc;
+    }, { cost: 0, calls: 0, cache_write: 0, cache_read: 0 });
+
+    res.json({ models, totals });
+  } catch (err) {
+    res.status(500).json({ error: 'internal_error', message: err.message });
+  }
+});
+
 module.exports = router;

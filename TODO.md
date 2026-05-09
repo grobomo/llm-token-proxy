@@ -10,9 +10,9 @@ Daily cron/timers: spike-detect (30min), daily-report (23:47), onedrive-sync (23
 `grobomo/openclaw` (private) pushed. `joel-ginsberg_tmemu/chat-exports` (private) pushed.
 
 ### Next session priorities
-- [ ] Visually verify dashboard at http://127.0.0.1:4100/dashboard — bars should have varied heights, hover shows pie. Try PowerShell screenshot or browser automation.
-- [x] Verify per-project X-Project headers are populating in usage.db — confirmed: 10 calls tagged `llm-token-proxy` from fresh session
-- [ ] Investigate browser control tools: Blueprint MCP, or native Windows screenshot (PowerShell constrained mode blocked .NET assemblies — may need full PowerShell or different approach)
+- [x] Visually verify dashboard — confirmed via `chromium-browser --headless --no-sandbox`. Bars have varied heights, color-coded (blue/yellow/red). Pie data flows via API.
+- [x] Verify per-project X-Project headers are populating in usage.db — confirmed working. 14 projects configured; new sessions tagged. Only pre-config sessions untagged.
+- [x] Browser control: `chromium-browser --headless --no-sandbox --screenshot=<path>` works from WSL. No need for Blueprint MCP or PowerShell.
 
 ### Completed this session (not in code — system config)
 - [x] Fixed proxy-restart-gate false positives (narrowed to only block token-proxy.service restart)
