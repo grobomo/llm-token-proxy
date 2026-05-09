@@ -192,6 +192,9 @@
       padding-left: 8px;
     }
 
+    .loading .breakdown-card > div:not(h3) { opacity: 0.4; transition: opacity 0.2s; }
+    .loading .chart { opacity: 0.4; transition: opacity 0.2s; }
+
     .empty-state {
       flex: 1;
       display: flex;
@@ -272,6 +275,7 @@
   </select>
   <span class="total" id="trend-label"></span>
   <span class="total" id="total-label">—</span>
+  <span class="total" id="last-refresh" style="font-size:11px"></span>
   <button id="export-btn" title="Export CSV" style="background:var(--bg);color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:12px;cursor:pointer" onclick="exportCSV()">CSV</button>
 </header>
 
@@ -743,11 +747,12 @@ function refreshAll() {
   document.querySelectorAll('.range-label').forEach(el => {
     el.textContent = el.textContent.replace(/—\s*\S+$/, `— ${rl}`);
   });
-  load();
-  loadBreakdown();
-  loadSavings();
-  loadProjectCosts();
-  loadSessions();
+  document.body.classList.add('loading');
+  Promise.all([load(), loadBreakdown(), loadSavings(), loadProjectCosts(), loadSessions()])
+    .finally(() => {
+      document.body.classList.remove('loading');
+      document.getElementById('last-refresh').textContent = 'updated ' + new Date().toLocaleTimeString();
+    });
 }
 
 function exportCSV() {
