@@ -48,14 +48,12 @@ All systemd timers active: spike-detect (30min), watchdog (5min), daily-report (
 
 ## Medium (New)
 
-- [ ] T114: Cost optimization — reduce daily spend from ~$300/day. Updated analysis (2026-05-09 01:28 UTC):
-  - `claude-opus-4-6` ($247/d): 880 calls with 116M cache_read. Main interactive sessions.
-  - `claude-4.6-opus-aws` ($53/d): 2091 calls. **CONFIRMED**: these are full sessions (100-300+ messages with cache markers). RDsec gateway reports 0 cache tokens but the calls are heavy. Model routing NOT viable.
-  - Cache write: $59/d from 3.2M tokens, 12 session restarts.
-  - **Actual savings lever**: fewer restarts → $2.33/restart saved. Reducing from 12 to 6 restarts/day saves ~$14/day.
-  - Dashboard shows cost optimization panel with restart count and savings.
-  - **Next**: Context-reset should be less aggressive (longer sessions before resetting). Consider session persistence or compaction strategies.
-- [ ] T115: Per-project hourly bar chart — second chart below the model chart once more projects are tagged.
+- [x] T114: Cost optimization — analysis complete, behavioral change deployed:
+  - Dashboard shows model breakdown + cache economics for ongoing visibility.
+  - Model override infrastructure ready (no safe targets identified).
+  - Context-reset rule tightened: requires 2+ staleness signals (not just "long session"). Should reduce restarts from ~12/day to ~6-8/day, saving ~$10-14/day.
+  - Remaining savings require architectural changes (session persistence, compaction) — out of scope for now.
+- [ ] T115: Per-project hourly bar chart — waiting for more projects to produce tagged data. Only `llm-token-proxy` tagged so far.
 
 ## Low / Backlog
 
