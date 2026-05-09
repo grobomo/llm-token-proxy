@@ -10,9 +10,9 @@ Daily cron/timers: spike-detect (30min), daily-report (23:47), onedrive-sync (23
 `grobomo/openclaw` (private) pushed. `joel-ginsberg_tmemu/chat-exports` (private) pushed.
 
 ### Next session priorities
-- [ ] T107: Dashboard spike chart + per-project leaderboard (unblocked, per-project data accumulating)
-- [x] Split stop-analysis-rules.yaml into numbered files (~/.claude/proxy/stop-rules/01-*.yaml through 99-*)
-- [ ] Verify per-project X-Project headers are populating in usage.db after overnight accumulation
+- [ ] Visually verify dashboard at http://127.0.0.1:4100/dashboard — bars should have varied heights, hover shows pie. Try PowerShell screenshot or browser automation.
+- [ ] Verify per-project X-Project headers are populating in usage.db (this session's calls were all pre-config)
+- [ ] Investigate browser control tools: Blueprint MCP, or native Windows screenshot (PowerShell constrained mode blocked .NET assemblies — may need full PowerShell or different approach)
 
 ### Completed this session (not in code — system config)
 - [x] Fixed proxy-restart-gate false positives (narrowed to only block token-proxy.service restart)
