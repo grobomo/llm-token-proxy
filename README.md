@@ -119,7 +119,8 @@ LiteLLM gateways (RDSec, etc.) strip `cache_creation_input_tokens` and `cache_re
 The proxy detects this and applies heuristic estimation:
 - **First call in a session:** estimates 60K cache_write tokens (system prompt being cached)
 - **Subsequent calls:** estimates 200K cache_read tokens (system prompt read from cache)
-- Only activates for Claude models on non-Anthropic upstreams with successful responses
+- Only activates for Claude models on non-Anthropic upstreams with a valid session_id
+- Skips estimation for single-turn calls (e.g. `/ask`, `/judge`) that don't use caching
 - Tagged with `cache_estimated=1` in the DB so dashboard shows an `est` badge
 
 The `/api/cache-estimation` endpoint shows actual vs estimated breakdown. The dashboard's Cache Economics panel reflects this data.
