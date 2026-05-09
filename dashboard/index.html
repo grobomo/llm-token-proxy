@@ -64,19 +64,19 @@
       -webkit-overflow-scrolling: touch;
     }
     .bar-wrap {
-      flex: 1;
+      flex: 0 0 auto;
+      width: max(4%, 44px);
       display: flex;
       flex-direction: column;
       align-items: center;
       height: 100%;
-      min-width: 36px;
       justify-content: flex-end;
       cursor: pointer;
       position: relative;
     }
     @media (max-width: 600px) {
       .chart { gap: 1px; min-height: 200px; }
-      .bar-wrap { min-width: 28px; }
+      .bar-wrap { width: 56px; }
     }
     .bar-stack {
       width: 100%;
@@ -359,11 +359,19 @@ function renderChart(data) {
   chart.querySelectorAll('.bar-wrap').forEach(wrap => {
     wrap.addEventListener('mouseenter', () => showTip(wrap));
     wrap.addEventListener('mouseleave', hideTip);
-    wrap.addEventListener('touchstart', (e) => { e.preventDefault(); showTip(wrap); }, { passive: false });
+    let touchMoved = false;
+    wrap.addEventListener('touchstart', () => { touchMoved = false; }, { passive: true });
+    wrap.addEventListener('touchmove', () => { touchMoved = true; }, { passive: true });
+    wrap.addEventListener('touchend', (e) => {
+      if (!touchMoved) { e.preventDefault(); showTip(wrap); }
+    });
   });
   document.addEventListener('touchstart', (e) => {
     if (activeTooltip && !e.target.closest('.bar-wrap')) hideTip();
-  });
+  }, { passive: true });
+
+  // Auto-scroll to most recent (rightmost) bars
+  chart.scrollLeft = chart.scrollWidth;
 }
 
 async function load() {

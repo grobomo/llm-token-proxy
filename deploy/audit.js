@@ -43,6 +43,8 @@ function getClientIp(req) {
 function logAccess(req, authSuccess) {
   const ip = getClientIp(req);
   const ua = (req.headers['user-agent'] || '').slice(0, 512);
+  const role = req.authRole || 'anonymous';
+  const isAdmin = role === 'admin';
 
   const existing = db.prepare('SELECT ip FROM known_ips WHERE ip = ?').get(ip);
   const firstSeen = !existing ? 1 : 0;
@@ -58,7 +60,7 @@ function logAccess(req, authSuccess) {
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(ip, req.path, req.method, ua, req.authUser || null, authSuccess ? 1 : 0, firstSeen);
 
-  return { ip, firstSeen };
+  return { ip, firstSeen, role, isAdmin };
 }
 
 function middleware(req, res, next) {
@@ -69,12 +71,24 @@ function middleware(req, res, next) {
   next();
 }
 
-function getRecentAccess(limit = 50) {
+function getRecentAccess(limit = 50, filter = 'all') {
+  if (filter === 'admin') {
+    return db.prepare(`
+      SELECT id, timestamp, ip, path, user_agent, auth_user, auth_success, first_seen
+      FROM access_log WHERE auth_user = 'admin' OR path LIKE '/admin%'
+      ORDER BY id DESC LIMIT ?
+    `).all(limit);
+  }
+  if (filter === 'viewer') {
+    return db.prepare(`
+      SELECT id, timestamp, ip, path, user_agent, auth_user, auth_success, first_seen
+      FROM access_log WHERE (auth_user != 'admin' OR auth_user IS NULL) AND path NOT LIKE '/admin%'
+      ORDER BY id DESC LIMIT ?
+    `).all(limit);
+  }
   return db.prepare(`
     SELECT id, timestamp, ip, path, user_agent, auth_user, auth_success, first_seen
-    FROM access_log
-    ORDER BY id DESC
-    LIMIT ?
+    FROM access_log ORDER BY id DESC LIMIT ?
   `).all(limit);
 }
 

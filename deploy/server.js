@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const Database = require('better-sqlite3');
 
-const basicAuth = require('./auth');
+const { authenticate, requireAdmin, getSessionInfo } = require('./auth');
 const audit = require('./audit');
 
 const PORT = process.env.PORT || 80;
@@ -20,7 +20,31 @@ const app = express();
 app.set('trust proxy', true);
 
 app.use(audit.middleware);
-app.use(basicAuth);
+app.use(express.json());
+
+// --- Public routes (no auth required) ---
+app.get('/login', (req, res) => {
+  res.sendFile(path.resolve(__dirname, 'login.html'));
+});
+
+app.post('/auth/login', (req, res) => {
+  const { password } = req.body || {};
+  const { createSessionForPassword } = require('./auth');
+  const result = createSessionForPassword(password);
+  if (result) {
+    const cookieName = 'dash_session';
+    const maxAge = parseInt(process.env.SESSION_TTL_HOURS || '24') * 3600;
+    res.set('Set-Cookie', `${cookieName}=${result.id}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}`);
+    return res.json({ ok: true, role: result.role });
+  }
+  return res.status(401).json({ ok: false });
+});
+
+// Root redirects to login (public)
+app.get('/', (req, res) => res.redirect('/login'));
+
+// Everything below requires a valid session
+app.use(authenticate);
 
 // --- Usage DB (read-only) ---
 let usageDb;
@@ -134,9 +158,16 @@ app.get('/api/savings-potential', (req, res) => {
   });
 });
 
-// --- Access audit endpoint ---
+// --- Admin endpoints (admin role required) ---
+app.use('/admin', requireAdmin);
+
+app.get('/admin/sessions', (req, res) => {
+  res.json(getSessionInfo());
+});
+
 app.get('/admin/access-log', (req, res) => {
-  const entries = audit.getRecentAccess(100);
+  const filter = req.query.filter || 'all'; // all | admin | viewer
+  const entries = audit.getRecentAccess(100, filter);
   const knownIps = audit.getKnownIps();
 
   if (req.query.format === 'html') {
@@ -172,7 +203,6 @@ app.get('/admin/access-log', (req, res) => {
 const DASH_DIR = path.resolve(__dirname, '..', 'dashboard');
 app.use('/dashboard', express.static(DASH_DIR));
 app.get('/dashboard', (req, res) => res.sendFile(path.resolve(DASH_DIR, 'index.html')));
-app.get('/', (req, res) => res.redirect('/dashboard'));
 
 // Start HTTP (redirect to HTTPS if certs exist)
 app.listen(PORT, '0.0.0.0', () => {
