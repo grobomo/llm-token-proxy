@@ -6,7 +6,17 @@ const fs       = require('fs');
 const yaml     = require('js-yaml');
 const db       = require('../db');
 
+const ResponseCache = require('../lib/cache');
+
 const router = express.Router();
+const apiCache = new ResponseCache({ ttlSeconds: 30, maxEntries: 50 });
+
+router.use(apiCache.middleware());
+
+router.get('/cache-stats', (req, res) => {
+  res.set('X-Cache', 'BYPASS');
+  res.json(apiCache.stats());
+});
 
 // Load config for budget limit
 function getConfig() {
