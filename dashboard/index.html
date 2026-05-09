@@ -39,6 +39,37 @@
     header h1 { font-size: 16px; font-weight: 600; color: var(--accent); }
     header .total { color: var(--muted); font-size: 13px; margin-left: auto; }
 
+    .health-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 12px;
+    }
+    .health-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .health-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    .health-dot.up { background: var(--green); }
+    .health-dot.down { background: var(--red); animation: blink 1s infinite; }
+    .health-dot.unknown { background: var(--muted); }
+    .health-label { color: var(--muted); }
+    .health-status { font-weight: 600; }
+    .health-status.up { color: var(--green); }
+    .health-status.down { color: var(--red); }
+    .health-ts { color: var(--muted); margin-left: auto; font-size: 11px; }
+    @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
+
     .chart-container {
       flex: 1;
       padding: 32px 24px;
@@ -232,6 +263,16 @@
   <span class="total" id="trend-label"></span>
   <span class="total" id="total-label">—</span>
 </header>
+
+<div class="health-bar" id="health-bar">
+  <div class="health-item">
+    <div class="health-dot unknown" id="health-dot-proxy"></div>
+    <span class="health-label">Proxy</span>
+    <span class="health-status unknown" id="health-proxy">checking...</span>
+  </div>
+  <div id="health-upstreams"></div>
+  <span class="health-ts" id="health-ts"></span>
+</div>
 
 <div class="chart-container">
   <div class="chart-label">Hourly spend — last 24 hours</div>
@@ -493,14 +534,43 @@ async function loadTrend() {
   } catch {}
 }
 
+async function loadHealth() {
+  const dot = document.getElementById('health-dot-proxy');
+  const label = document.getElementById('health-proxy');
+  const upstreamsEl = document.getElementById('health-upstreams');
+  const tsEl = document.getElementById('health-ts');
+  try {
+    const r = await fetch('/diagnose');
+    const d = await r.json();
+    dot.className = 'health-dot up';
+    label.className = 'health-status up';
+    label.textContent = 'running';
+    const upstreamHtml = Object.entries(d.upstreams || {}).map(([name, status]) => {
+      const cls = status === 'reachable' ? 'up' : 'down';
+      const text = status === 'reachable' ? 'up' : 'down';
+      return `<div class="health-item"><div class="health-dot ${cls}"></div><span class="health-label">${name}</span><span class="health-status ${cls}">${text}</span></div>`;
+    }).join('');
+    upstreamsEl.innerHTML = upstreamHtml;
+    tsEl.textContent = new Date(d.ts).toLocaleTimeString();
+  } catch (err) {
+    dot.className = 'health-dot down';
+    label.className = 'health-status down';
+    label.textContent = 'unreachable';
+    upstreamsEl.innerHTML = '';
+    tsEl.textContent = 'failed ' + new Date().toLocaleTimeString();
+  }
+}
+
 load();
 loadBreakdown();
 loadSavings();
 loadTrend();
+loadHealth();
 setInterval(load, 60000);
 setInterval(loadBreakdown, 60000);
 setInterval(loadSavings, 300000);
 setInterval(loadTrend, 120000);
+setInterval(loadHealth, 15000);
 </script>
 </body>
 </html>
