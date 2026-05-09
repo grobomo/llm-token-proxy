@@ -1,11 +1,18 @@
 # TODO
 
-## Session State (2026-05-08, end of session)
+## Session State (2026-05-09 00:10 UTC)
 
-Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `c5e6b86`.
-`gh_auto` fixed: uses inline credential helper for git, active-account switch/restore for gh.
-`gh-auto-gate` hook active in WSL — blocks raw `gh`/`git push`.
-14 projects auto-configured with `X-Project` headers via `scripts/setup-projects.js`.
+Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `004251f`.
+`gh_auto` fixed: inline credential helper for git, active-account switch/restore for gh.
+`gh-auto-gate` + `proxy-restart-gate` hooks active (gate narrowed to only block proxy service restart).
+14 projects auto-configured with `X-Project` headers. Proxy restarted with schema v4.
+Daily cron/timers: spike-detect (30min), daily-report (23:47), onedrive-sync (23:50), log-rotate (03:03). All with `Persistent=true`.
+`grobomo/openclaw` (private) pushed. `joel-ginsberg_tmemu/chat-exports` (private) pushed.
+
+### Next session priorities
+- [ ] T107: Dashboard spike chart + per-project leaderboard (unblocked, per-project data accumulating)
+- [ ] Split stop-analysis-rules.yaml into numbered files (03-suggest-context-reset.yaml etc)
+- [ ] Verify per-project X-Project headers are populating in usage.db after overnight accumulation
 
 ### Remaining Setup
 
