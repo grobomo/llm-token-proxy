@@ -11,7 +11,7 @@ Daily cron/timers: spike-detect (30min), daily-report (23:47), onedrive-sync (23
 
 ### Next session priorities
 - [ ] Visually verify dashboard at http://127.0.0.1:4100/dashboard — bars should have varied heights, hover shows pie. Try PowerShell screenshot or browser automation.
-- [ ] Verify per-project X-Project headers are populating in usage.db (this session's calls were all pre-config)
+- [x] Verify per-project X-Project headers are populating in usage.db — confirmed: 10 calls tagged `llm-token-proxy` from fresh session
 - [ ] Investigate browser control tools: Blueprint MCP, or native Windows screenshot (PowerShell constrained mode blocked .NET assemblies — may need full PowerShell or different approach)
 
 ### Completed this session (not in code — system config)
