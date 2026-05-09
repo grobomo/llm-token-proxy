@@ -220,6 +220,37 @@ router.get('/hourly-breakdown', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/daily-comparison
+// Today's spend vs yesterday (same time window) for trend indicator.
+// ---------------------------------------------------------------------------
+router.get('/daily-comparison', (req, res) => {
+  try {
+    const today = db.query(`
+      SELECT SUM(estimated_cost_usd) AS cost, COUNT(*) AS calls
+      FROM usage_log
+      WHERE timestamp >= strftime('%Y-%m-%dT00:00:00Z', 'now')
+    `);
+
+    const yesterdayFull = db.query(`
+      SELECT SUM(estimated_cost_usd) AS cost, COUNT(*) AS calls
+      FROM usage_log
+      WHERE timestamp >= strftime('%Y-%m-%dT00:00:00Z', 'now', '-1 day')
+        AND timestamp < strftime('%Y-%m-%dT00:00:00Z', 'now')
+    `);
+
+    const t = today[0] || { cost: 0, calls: 0 };
+    const y = yesterdayFull[0] || { cost: 0, calls: 0 };
+
+    res.json({
+      today: { cost: parseFloat((t.cost || 0).toFixed(2)), calls: t.calls || 0 },
+      yesterday: { cost: parseFloat((y.cost || 0).toFixed(2)), calls: y.calls || 0 },
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'internal_error', message: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/cost-breakdown
 // Model-level cost breakdown + cache economics for the dashboard.
 // ---------------------------------------------------------------------------

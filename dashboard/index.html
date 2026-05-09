@@ -229,6 +229,7 @@
 
 <header>
   <h1>Token Proxy</h1>
+  <span class="total" id="trend-label"></span>
   <span class="total" id="total-label">—</span>
 </header>
 
@@ -468,12 +469,30 @@ async function loadSavings() {
   }
 }
 
+async function loadTrend() {
+  try {
+    const r = await fetch('/api/daily-comparison');
+    if (!r.ok) return;
+    const d = await r.json();
+    const el = document.getElementById('trend-label');
+    const todayCost = d.today?.cost || 0;
+    const yesterdayCost = d.yesterday?.cost || 0;
+    if (yesterdayCost > 0) {
+      el.textContent = `today ${fmtCost(todayCost)} / yesterday ${fmtCost(yesterdayCost)}`;
+    } else {
+      el.textContent = `today ${fmtCost(todayCost)}`;
+    }
+  } catch {}
+}
+
 load();
 loadBreakdown();
 loadSavings();
+loadTrend();
 setInterval(load, 60000);
 setInterval(loadBreakdown, 60000);
 setInterval(loadSavings, 300000);
+setInterval(loadTrend, 120000);
 </script>
 </body>
 </html>
