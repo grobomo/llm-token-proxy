@@ -63,8 +63,12 @@ Stock Claude Code and Claude Desktop **do not** send these. The cleanest way is 
 | `proxy.js` | The Express + undici proxy. |
 | `db.js` | SQLite schema + insert helpers. |
 | `pricing.js` | Cost calc — pricing table comes from `config.yaml`. |
+| `lib/cache-estimator.js` | Heuristic cache cost estimation for upstreams that strip cache tokens. |
+| `lib/ask.js`, `lib/judge.js` | Tiered LLM endpoint handlers. |
+| `lib/escalation.js` | Async escalation manager with polling and webhook support. |
 | `dashboard/` | Static HTML + JSON API at `/dashboard` and `/api/*`. |
 | `scripts/watchdog.sh` | End-to-end self-test. Generic; cooperates with consumer enforcers via hooks. |
+| `scripts/backfill-cache-estimates.js` | Standalone cache estimation backfill for historical data. |
 | `scripts/watchdog-ctl.sh` | Operator CLI: status, maintenance, disable/enable, tick, tail. |
 | `scripts/cost-analyzer.js` | Rules-based pattern detection (model overuse, idle spend, etc.). |
 | `scripts/cost-optimizer.js` | Suggestions based on the analyzer output. |
@@ -120,10 +124,25 @@ The proxy detects this and applies heuristic estimation:
 
 The `/api/cache-estimation` endpoint shows actual vs estimated breakdown. The dashboard's Cache Economics panel reflects this data.
 
+**Backfill:** For historical data logged before the estimator was deployed, `POST /api/backfill-cache` retroactively applies the heuristic. Localhost-only, dry-run by default (`{"dryRun": false}` to execute). Also available as `node scripts/backfill-cache-estimates.js [--dry-run]`.
+
+## Dashboard
+
+The dashboard at `/dashboard` shows:
+- **Hourly spend** — stacked bar chart by model with hover details
+- **Cost by model** — per-model breakdown with upstream labels (RDSec/Anthropic)
+- **Cache economics** — estimated cache write/read tokens and costs
+- **Top projects** — per-project cost with horizontal bar chart
+- **Cost optimization** — session restart cost vs per-message context cost with break-even analysis
+- **Judge decisions** — gate decision log (when using `/judge` endpoints)
+- **Health** — proxy status + upstream reachability with auto-refresh
+
+Failed calls (HTTP 4xx/5xx) are filtered from cost panels to reduce noise.
+
 ## Testing
 
 ```bash
-npm test          # 40 tests — 13 cache-estimator unit + 27 e2e (mock upstream + real proxy)
+npm test          # 41 tests — 13 cache-estimator unit + 28 e2e (mock upstream + real proxy)
 ```
 
 ## Known limitations / TODO
