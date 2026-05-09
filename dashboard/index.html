@@ -346,7 +346,7 @@ function renderChart(data) {
   const maxCost = Math.max(...hours.map(h => h.total_cost), 0.01);
   const totalCost = hours.reduce((s, h) => s + h.total_cost, 0);
   const totalCalls = hours.reduce((s, h) => s + h.total_calls, 0);
-  document.getElementById('total-label').textContent = `${fmtCost(totalCost)} total — ${totalCalls} calls`;
+  document.getElementById('total-label').textContent = `${fmtCost(totalCost)} last 24h — ${totalCalls} calls`;
 
   function utcToCdt(utcHour) { return (utcHour - 5 + 24) % 24; }
   function fmtHour(h) { const hr12 = h % 12 || 12; return `${hr12}:00${h < 12 ? 'a' : 'p'}`; }
