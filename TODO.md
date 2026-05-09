@@ -14,6 +14,13 @@ Daily cron/timers: spike-detect (30min), daily-report (23:47), onedrive-sync (23
 - [ ] Split stop-analysis-rules.yaml into numbered files (03-suggest-context-reset.yaml etc)
 - [ ] Verify per-project X-Project headers are populating in usage.db after overnight accumulation
 
+### Completed this session (not in code — system config)
+- [x] Fixed proxy-restart-gate false positives (narrowed to only block token-proxy.service restart)
+- [x] Added suggest-context-reset stop-hook rule (priority above todo-awareness)
+- [x] Updated session-start-instructions: context-reset is autonomous, don't ask user
+- [x] Installed persistent systemd timers (daily-report, onedrive-sync, log-rotate)
+- [x] gh-auto-gate hook enabled in WSL
+
 ### Remaining Setup
 
 - [x] **Restart the running proxy** — deployed via `safe-restart.sh`, schema v4 active, e2e verified.
