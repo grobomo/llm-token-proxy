@@ -137,13 +137,17 @@ The dashboard at `/dashboard` shows:
 - **Cost optimization** — session restart cost vs per-message context cost with break-even analysis
 - **Judge decisions** — gate decision log (when using `/judge` endpoints)
 - **Health** — proxy status + upstream reachability with auto-refresh
+- **CSV export** — download usage data for any time range via the header button
+- **Range selector** — switch between 1h, 6h, 12h, 24h, 7d, 30d views
 
 Failed calls (HTTP 4xx/5xx) are filtered from cost panels to reduce noise.
+
+The API is self-documenting: `GET /api/` returns all available endpoints with descriptions and parameters.
 
 ## Testing
 
 ```bash
-npm test          # 60 tests — 13 cache-estimator unit + 47 e2e (mock upstream + real proxy)
+npm test          # 62 tests — 13 cache-estimator unit + 49 e2e (mock upstream + real proxy)
 ```
 
 ## Known limitations / TODO
