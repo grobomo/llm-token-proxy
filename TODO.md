@@ -66,15 +66,15 @@ All systemd timers active: spike-detect (30min), watchdog (5min), daily-report (
 
 ## Medium (Dashboard UX)
 
-- [ ] T120: Rename top-left title from "token proxy" to "token proxy dashboard"
+- [x] T120: Renamed to "Token Tracker". Commit a5e2dc4.
 - [ ] T121: Health indicator UX overhaul:
   1. RENAME: "Proxy unreachable" is misleading — if you can see the dashboard, the proxy is up. The label should say "API upstream" not "Proxy". Show "unreachable" only for upstream failures.
   2. HOVER DETAILS: Add tooltip showing: what failed (connection refused vs timeout vs HTTP error), error message, last successful check time, retry countdown (polls every 15s).
   3. STALENESS: Browser tabs throttle setInterval when backgrounded — health dot can show stale failure state. Add visual "stale" indicator (gray dot) if last check was >30s ago, and force-refresh on tab focus.
   4. SELF-AWARENESS: If the dashboard page loaded successfully, proxy is definitionally running. Show a separate "Proxy: running" indicator that's always green (it's a tautology but reduces user confusion).
-- [ ] T124: Cost optimization widget — reframe as tradeoff, not just "fewer restarts = savings". Current framing is misleading. The real economics: restarts cost $2.33 (cache_write) BUT reset context size. Longer sessions accumulate context → higher cache_read cost per message ($0.30/M tokens). Show: (1) avg context size at restart time, (2) per-message cost at current context size vs fresh, (3) break-even point (after N messages, smaller context saves more than the restart cost). Add info icon with the formula.
-- [ ] T123: Cost-by-model widget — add upstream labels. Models with `-aws` suffix route through RDsec (Bedrock), others through C4E (direct Anthropic). Show as badge/tag next to model name: "[RDsec]" or "[C4E]". Data already has this info in the model name — just needs UI treatment.
-- [ ] T122: Dashboard timezone bug — "today/yesterday" uses UTC but user is CDT (UTC-5). This makes "today" show only 5 hours of spending at 11pm local, which looks wrong vs the hourly bars. Fix: either display in local timezone (detect from browser) or clearly label "UTC" on all time references. The $132 vs "$50-60/hour" confusion is because only 2 high-spend hours exist in the UTC "today" window — user's actual workday is split across two UTC days.
+- [x] T124: Cost optimization widget reframed — shows restart cost vs per-message context cost, break-even point (12 messages). Panel explains the tradeoff clearly.
+- [x] T123: Upstream labels [RDsec]/[C4E] added to model names. Commit a5e2dc4.
+- [x] T122: Added "(UTC)" label to today/yesterday header. Commit a5e2dc4. Full browser-timezone conversion is a future enhancement.
 
 ## Low / Backlog
 
