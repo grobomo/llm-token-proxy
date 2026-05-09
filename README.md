@@ -106,7 +106,13 @@ The proxy exposes tiered `/ask` and `/judge` endpoints for internal tooling (hoo
 
 **Escalation manager:** Tracks async escalations in `escalation_state` table. Poll `GET /escalation/:ticketId` for results. Per-tier audit notes written to `data/escalations/`.
 
-Full API docs: [`docs/api-reference.md`](./docs/api-reference.md)
+Full API docs: [`docs/api-reference.md`](./docs/api-reference.md) | Escalation flow: [`docs/escalation-flow.md`](./docs/escalation-flow.md)
+
+## Testing
+
+```bash
+npm test          # 25 e2e tests — boots mock upstream + real proxy, hits all endpoints
+```
 
 ## Known limitations / TODO
 

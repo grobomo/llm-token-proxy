@@ -1,30 +1,15 @@
 # TODO
 
-## Session State (2026-05-09 01:25 UTC)
+## Session State (2026-05-09 06:40 UTC)
 
 Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `4a657c2`.
 Schema v5 active (original_model column). Model override infrastructure deployed but no active rules.
-Dashboard enhanced: cost-by-model + cache economics panels. Headless chromium screenshots work.
-14 projects auto-configured with X-Project headers — confirmed populating in usage.db.
-All systemd timers active: spike-detect (30min), watchdog (5min), daily-report (23:47), onedrive-sync (23:50), log-rotate (03:03).
+E2E test suite added: 25 tests covering /health, /v1/messages, /ask (L1/L2/L3), /judge (L1/L2/L3), /escalation, rate limits, stats.
+Bug fixed: proxy no longer crashes on unknown API key prefix (graceful 400 instead of unhandled throw).
 
 ### Next session priorities
-- [x] Visually verify dashboard — confirmed via `chromium-browser --headless --no-sandbox`. Bars have varied heights, color-coded (blue/yellow/red). Pie data flows via API.
-- [x] Verify per-project X-Project headers are populating in usage.db — confirmed working. 14 projects configured; new sessions tagged. Only pre-config sessions untagged.
-- [x] Browser control: `chromium-browser --headless --no-sandbox --screenshot=<path>` works from WSL. No need for Blueprint MCP or PowerShell.
-
-### Completed this session (not in code — system config)
-- [x] Fixed proxy-restart-gate false positives (narrowed to only block token-proxy.service restart)
-- [x] Added suggest-context-reset stop-hook rule (priority above todo-awareness)
-- [x] Updated session-start-instructions: context-reset is autonomous, don't ask user
-- [x] Installed persistent systemd timers (daily-report, onedrive-sync, log-rotate)
-- [x] gh-auto-gate hook enabled in WSL
-
-### Remaining Setup
-
-- [x] **Restart the running proxy** — deployed via `safe-restart.sh`, schema v4 active, e2e verified.
-- [x] Create `grobomo/openclaw` (private) and push openclaw mirror — all 14 branches pushed. Added `.github/publish.json`.
-- [x] Audit all clients for `ANTHROPIC_BASE_URL` pointing direct — no active bypasses found. Only archived backups reference direct URLs.
+- [x] T127: Docs audit — done. Fixed auth section (not all endpoints need auth), added /v1/* proxy docs, /health, /diagnose sections. Created standalone `docs/escalation-flow.md` with sequence diagram. Added testing section to README.
+- [x] T128: Streaming SSE e2e test — done. Mock upstream sends SSE events, proxy forwards correctly, usage parsed from message_delta.
 
 ---
 
@@ -170,3 +155,9 @@ All systemd timers active: spike-detect (30min), watchdog (5min), daily-report (
 - [x] T112: Pluggable alerting (Slack, webhook, email) — `lib/alert.js` implements log/slack/webhook. Wired into spike-detect.js. Config: `alerting.slack_webhook` + `alerting.webhook_url`. Set env vars or config.yaml to activate.
 - [x] T113: Evaluated LiteLLM proxy — decided to keep custom proxy.js. LiteLLM lacks cache token tracking, hourly model charts, /judge endpoint, IP audit, model override rules. Our proxy has too much specialized tooling to replace. RDsec already uses LiteLLM upstream so we get its routing benefits without running it ourselves.
 - [x] T116: Custom domain `tokentracker.click` — LIVE with HTTPS. Cert expires 2026-08-07 (auto-renews). Login: password-only → `proxy1`. Admin: `admin`/`4dm1n!`.
+
+## Medium (Testing & Docs)
+
+- [x] T126b: E2E test suite — `npm test` runs 25 tests via node:test. Mock upstream, real proxy process, real HTTP requests. Covers: health, diagnose, proxy pass-through, /ask L1/L2/L3, /judge L1/L2/L3, escalation polling, rate limits, stats, 404. All pass.
+- [x] T127: Docs audit — fixed auth section, added /v1/* proxy + /health + /diagnose docs, created `docs/escalation-flow.md`, added testing section to README.
+- [x] T128: Streaming SSE e2e test — 2 new tests (SSE forwarding + upstream error). Total: 27 tests pass.

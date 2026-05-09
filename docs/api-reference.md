@@ -4,7 +4,17 @@ Base URL: `http://127.0.0.1:4100`
 
 ## Authentication
 
-All endpoints require an API key via `x-api-key` header or `Authorization: Bearer <key>`.
+Tiered LLM endpoints (`/ask*`, `/judge*`) and the proxy path (`/v1/*`) require an API key via `x-api-key` header or `Authorization: Bearer <key>`.
+
+Public endpoints (no auth): `/health`, `/diagnose`, `/escalation/:ticketId`, `/api/ask-stats`, `/api/judge-stats`, `/dashboard`.
+
+## Configuration
+
+The proxy reads `config.yaml` from the project root by default. Override with the `PROXY_CONFIG` env var:
+
+```bash
+PROXY_CONFIG=/path/to/config.yaml node proxy.js
+```
 
 ## POST /ask
 
@@ -222,3 +232,50 @@ Each escalation writes markdown notes to `data/escalations/{ticket_id}-L{n}.md` 
 - Response content
 - Confidence score
 - Latency and token counts
+
+## Proxy Pass-through: /v1/*
+
+All requests to `/v1/*` are forwarded to the matching upstream based on API key prefix (configured in `config.yaml` under `upstreams`).
+
+**Routing:** The proxy matches the API key's prefix against `key_pattern` entries. First match wins.
+
+**Error responses:**
+
+| Status | Error | Cause |
+|--------|-------|-------|
+| 400 | `no_upstream_match` | API key prefix doesn't match any configured upstream |
+| 502 | `upstream_unreachable` | Upstream server is down or timed out |
+| 503 | `shutting_down` | Proxy is draining connections (includes `Retry-After: 2` header) |
+
+**Usage logging:** Every proxied request logs token usage and cost to SQLite. Streaming responses (SSE) are parsed for usage data in `message_delta` / `message_stop` events.
+
+## GET /health
+
+No auth required. Returns proxy and upstream status.
+
+```json
+{
+  "status": "ok",
+  "upstream": "reachable",
+  "upstreams": ["anthropic"],
+  "proxy": "running",
+  "port": 4100,
+  "ts": "ISO-8601"
+}
+```
+
+Returns 503 with `"status": "degraded"` if the primary upstream is unreachable.
+
+## GET /diagnose
+
+No auth required. Checks all configured upstreams individually.
+
+```json
+{
+  "cause": "healthy",
+  "proxy": true,
+  "upstreams": { "anthropic": "reachable" },
+  "action": "No action needed",
+  "ts": "ISO-8601"
+}
+```

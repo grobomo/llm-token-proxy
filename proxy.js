@@ -12,7 +12,7 @@ const pricing = require('./pricing');
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
-const CONFIG_PATH = path.resolve(__dirname, 'config.yaml');
+const CONFIG_PATH = process.env.PROXY_CONFIG || path.resolve(__dirname, 'config.yaml');
 const config      = yaml.load(fs.readFileSync(CONFIG_PATH, 'utf8'));
 
 const PORT     = config.port     || 4100;
@@ -228,6 +228,11 @@ function internalOnly(req, res, next) {
   res.status(403).json({ error: 'internal_only' });
 }
 
+function parseBody(req) {
+  if (!req.body || req.body.length === 0) return {};
+  return JSON.parse(req.body.toString('utf8'));
+}
+
 // ---------------------------------------------------------------------------
 // Judge endpoint (T118/T126) — semantic gate decisions with tiered escalation
 // ---------------------------------------------------------------------------
@@ -235,7 +240,8 @@ const judge = require('./lib/judge');
 judge.init(config.db || path.resolve(__dirname, 'usage.db'));
 
 app.post('/judge', async (req, res) => {
-  const body = req.body?.length > 0 ? JSON.parse(req.body.toString('utf8')) : {};
+  let body;
+  try { body = parseBody(req); } catch { return res.status(400).json({ error: 'invalid_json' }); }
   const { question, context, gate, project, session_id, fallback, sync, critical, webhook_url } = body;
 
   if (!question || !gate) {
@@ -325,7 +331,8 @@ app.post('/judge/l2', internalOnly, async (req, res) => {
     return res.status(429).json({ error: 'rate_limited', remaining: 0, reset_at: new Date(limit.resetAt).toISOString() });
   }
 
-  const body = req.body?.length > 0 ? JSON.parse(req.body.toString('utf8')) : {};
+  let body;
+  try { body = parseBody(req); } catch { return res.status(400).json({ error: 'invalid_json' }); }
   const { question, context, gate, project, session_id, escalation_reason } = body;
 
   if (!question || !gate) return res.status(400).json({ error: 'missing_fields', required: ['question', 'gate'] });
@@ -357,7 +364,8 @@ app.post('/judge/l3', internalOnly, async (req, res) => {
     return res.status(429).json({ error: 'rate_limited', remaining: 0, reset_at: new Date(limit.resetAt).toISOString() });
   }
 
-  const body = req.body?.length > 0 ? JSON.parse(req.body.toString('utf8')) : {};
+  let body;
+  try { body = parseBody(req); } catch { return res.status(400).json({ error: 'invalid_json' }); }
   const { question, context, gate, project, session_id, escalation_reason } = body;
 
   if (!question || !gate) return res.status(400).json({ error: 'missing_fields', required: ['question', 'gate'] });
@@ -394,7 +402,8 @@ app.get('/api/judge-stats', (req, res) => {
 const RATE_LIMITS = { L2: 100, L3: 20 };
 
 app.post('/ask', async (req, res) => {
-  const body = req.body?.length > 0 ? JSON.parse(req.body.toString('utf8')) : {};
+  let body;
+  try { body = parseBody(req); } catch { return res.status(400).json({ error: 'invalid_json' }); }
   const { system, prompt, caller, maxTokens, jsonMode, sync, webhook_url } = body;
 
   if (!prompt) return res.status(400).json({ error: 'missing_fields', required: ['prompt'] });
@@ -464,7 +473,8 @@ app.post('/ask/l2', internalOnly, async (req, res) => {
     return res.status(429).json({ error: 'rate_limited', remaining: 0, reset_at: new Date(limit.resetAt).toISOString() });
   }
 
-  const body = req.body?.length > 0 ? JSON.parse(req.body.toString('utf8')) : {};
+  let body;
+  try { body = parseBody(req); } catch { return res.status(400).json({ error: 'invalid_json' }); }
   const { system, prompt, caller, maxTokens, jsonMode, escalation_reason } = body;
 
   if (!prompt) return res.status(400).json({ error: 'missing_fields', required: ['prompt'] });
@@ -493,7 +503,8 @@ app.post('/ask/l3', internalOnly, async (req, res) => {
     return res.status(429).json({ error: 'rate_limited', remaining: 0, reset_at: new Date(limit.resetAt).toISOString() });
   }
 
-  const body = req.body?.length > 0 ? JSON.parse(req.body.toString('utf8')) : {};
+  let body;
+  try { body = parseBody(req); } catch { return res.status(400).json({ error: 'invalid_json' }); }
   const { system, prompt, caller, maxTokens, jsonMode, escalation_reason } = body;
 
   if (!prompt) return res.status(400).json({ error: 'missing_fields', required: ['prompt'] });
@@ -574,7 +585,12 @@ app.all('/v1/*', async (req, res) => {
   const userAgent  = req.headers['user-agent'] ? String(req.headers['user-agent']).slice(0, 256) : null;
 
   // ---- Resolve upstream based on API key format ----
-  const { name: upstreamName, url: upstreamBaseResolved } = resolveUpstream(req);
+  let upstreamName, upstreamBaseResolved;
+  try {
+    ({ name: upstreamName, url: upstreamBaseResolved } = resolveUpstream(req));
+  } catch (err) {
+    return res.status(400).json({ error: 'no_upstream_match', message: err.message });
+  }
 
   // ---- Build upstream URL ----
   // req.url = /v1/messages → strip leading /v1 and append to upstream base
