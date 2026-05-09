@@ -27,3 +27,6 @@ data/
 *.log
 .token-proxy-*
 SESSION_STATE.md
+.claude-launch.sh
+.claude-next-prompt
+.claude/
