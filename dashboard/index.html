@@ -602,9 +602,9 @@ setInterval(() => {
   }
 }, 5000);
 
-// Force refresh on tab focus
+// Force refresh on tab focus (browser throttles setInterval when backgrounded)
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) loadHealth();
+  if (!document.hidden) { loadHealth(); load(); loadBreakdown(); loadTrend(); loadJudge(); }
 });
 
 async function loadJudge() {

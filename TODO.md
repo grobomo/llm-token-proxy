@@ -1,15 +1,25 @@
 # TODO
 
-## Session State (2026-05-09 06:40 UTC)
+## Session State (2026-05-09)
 
 Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `4a657c2`.
 Schema v5 active (original_model column). Model override infrastructure deployed but no active rules.
-E2E test suite added: 25 tests covering /health, /v1/messages, /ask (L1/L2/L3), /judge (L1/L2/L3), /escalation, rate limits, stats.
+E2E test suite added: 27 tests covering /health, /v1/messages, /ask (L1/L2/L3), /judge (L1/L2/L3), /escalation, rate limits, stats, streaming SSE.
 Bug fixed: proxy no longer crashes on unknown API key prefix (graceful 400 instead of unhandled throw).
 
+### What was done this session
+- Configured Blueprint MCP for WSL (`~/.claude/.mcp.json`) — browser automation via real Chrome profile
+- Created Haiku stop rule `15-blueprint-cost-verify.yaml` — fires when session can't access web portals or cites unverified costs
+- Saved memory reference for Blueprint usage
+
 ### Next session priorities
-- [x] T127: Docs audit — done. Fixed auth section (not all endpoints need auth), added /v1/* proxy docs, /health, /diagnose sections. Created standalone `docs/escalation-flow.md` with sequence diagram. Added testing section to README.
-- [x] T128: Streaming SSE e2e test — done. Mock upstream sends SSE events, proxy forwards correctly, usage parsed from message_delta.
+- [ ] T129: Test Blueprint MCP from WSL — verify `browser_navigate` to RDSec portal + Claude.ai usage page works. Extract actual per-token costs for Opus 4.6 from both. Compare and document any discrepancy. **BLOCKED**: requires Chrome + Blueprint extension running.
+- [ ] T130: Cost source-of-truth — RDSec vs C4E cost gap EXPLAINED (not a pricing bug):
+  - C4E (`claude-opus-4-6`): 559 calls, $157, reports 1.75M cache_write tokens ($32.78 at $18.75/M)
+  - RDSec (`claude-4.6-opus-aws`): 2546 calls, $55, reports 0 cache_write tokens
+  - Same per-token rate. Difference is cache_write attribution — RDSec LiteLLM gateway doesn't surface cache_write in responses.
+  - **Next step**: verify via Blueprint whether RDSec actually has prompt caching enabled (check their billing portal for cache line items). **BLOCKED**: depends on T129.
+- [ ] T111: Pluggable storage backend (Postgres) for multi-host deployments.
 
 ---
 
