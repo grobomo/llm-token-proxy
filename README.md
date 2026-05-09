@@ -89,9 +89,28 @@ scripts/watchdog-ctl.sh status
 
 Each tick: real chat-completion call with `Accept-Encoding: gzip, deflate, br` → curl `--compressed` validates decompression. State transitions (PASS→FAIL or FAIL→PASS) optionally invoke `WATCHDOG_ON_FAIL_HOOK` / `WATCHDOG_ON_PASS_HOOK` — point these at your own scripts to flip consumer configs (e.g. unset `ANTHROPIC_BASE_URL` while the proxy is down).
 
+## Tiered LLM Endpoints
+
+The proxy exposes tiered `/ask` and `/judge` endpoints for internal tooling (hooks, scripts, agents) to call LLMs at different capability levels through the same proxy with cost tracking.
+
+| Endpoint | Model | Cost | Access |
+|----------|-------|------|--------|
+| `POST /ask` | Haiku (L1) | ~$0.001 | Public |
+| `POST /ask/l2` | Sonnet (L2) | ~$0.01 | Localhost only, 100/hr |
+| `POST /ask/l3` | Opus (L3) | ~$0.05 | Localhost only, 20/hr |
+| `POST /judge` | Haiku (L1) | ~$0.001 | Public |
+| `POST /judge/l2` | Sonnet (L2) | ~$0.01 | Localhost only, 50/hr |
+| `POST /judge/l3` | Opus (L3) | ~$0.05 | Localhost only, 10/hr |
+
+**Auto-escalation:** When `/ask` or `/judge` returns low confidence (< 0.7 in jsonMode), it automatically escalates to L2. Callers can choose sync (wait up to 8s) or async (get a poll URL back immediately).
+
+**Escalation manager:** Tracks async escalations in `escalation_state` table. Poll `GET /escalation/:ticketId` for results. Per-tier audit notes written to `data/escalations/`.
+
+Full API docs: [`docs/api-reference.md`](./docs/api-reference.md)
+
 ## Known limitations / TODO
 
-See [TODO.md](./TODO.md). Top of mind: Anthropic-billed-vs-proxy-recorded reconciliation (open mystery), `zstd` Accept-Encoding support, and per-project header injection for stock CC / Claude Desktop.
+See [TODO.md](./TODO.md). Top of mind: Postgres storage backend for multi-host deployments.
 
 ## License
 
