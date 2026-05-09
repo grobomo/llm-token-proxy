@@ -627,17 +627,17 @@ let shuttingDown = false;
 function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
-  log('info', `${signal} received — draining in-flight requests (5s max)...`);
+  log('info', `${signal} received — draining in-flight requests (2s max)...`);
 
   // Stop accepting new connections
   if (server) server.close();
 
-  // Reject new requests with 503 + Retry-After during drain
+  // Short drain — most requests complete in <1s; long drain just extends the outage window
   const drainTimeout = setTimeout(() => {
     log('info', 'Drain timeout — forcing exit');
     db.close();
     process.exit(0);
-  }, 5000);
+  }, 2000);
   drainTimeout.unref();
 
   // If server closes cleanly (all connections done), exit immediately

@@ -36,8 +36,8 @@ PID=$(systemctl --user show token-proxy.service -p MainPID --value 2>/dev/null)
 if [[ -n "$PID" && "$PID" != "0" ]]; then
     log "sending SIGTERM to PID $PID (draining in-flight requests)..."
     systemctl --user kill --signal=SIGTERM token-proxy.service 2>/dev/null || true
-    # Wait for process to exit (drain timeout is 5s in proxy, give 7s total)
-    for i in $(seq 1 7); do
+    # Wait for process to exit (drain timeout is 2s in proxy, give 4s total)
+    for i in $(seq 1 4); do
         if ! kill -0 "$PID" 2>/dev/null; then
             log "old process exited after ${i}s"
             break
