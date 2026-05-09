@@ -549,6 +549,85 @@ describe('E2E: Token Proxy', { timeout: 30000 }, () => {
   // Dashboard API endpoints (T141)
   // =========================================================================
 
+  describe('/api/usage', () => {
+    it('returns usage rows with totals', async () => {
+      const { status, json } = await req('GET', '/api/usage');
+      assert.equal(status, 200);
+      assert.equal(json.period, 'today');
+      assert.ok(Array.isArray(json.rows));
+      assert.ok(typeof json.totals === 'object');
+      assert.ok(typeof json.row_count === 'number');
+    });
+
+    it('accepts group=model parameter', async () => {
+      const { status, json } = await req('GET', '/api/usage?group=model');
+      assert.equal(status, 200);
+      assert.equal(json.group, 'model');
+    });
+
+    it('rejects invalid period', async () => {
+      const { status, json } = await req('GET', '/api/usage?period=bogus');
+      assert.equal(status, 400);
+      assert.equal(json.error, 'invalid_period');
+    });
+
+    it('rejects invalid group', async () => {
+      const { status, json } = await req('GET', '/api/usage?group=bogus');
+      assert.equal(status, 400);
+      assert.equal(json.error, 'invalid_group');
+    });
+  });
+
+  describe('/api/budget', () => {
+    it('returns budget status with limits', async () => {
+      const { status, json } = await req('GET', '/api/budget');
+      assert.equal(status, 200);
+      assert.ok(typeof json.monthly_limit === 'number');
+      assert.ok(Array.isArray(json.alert_at));
+      assert.ok(Array.isArray(json.alerts_crossed));
+    });
+  });
+
+  describe('/api/summary', () => {
+    it('returns all dashboard data in one call', async () => {
+      const { status, json } = await req('GET', '/api/summary');
+      assert.equal(status, 200);
+      assert.ok(typeof json.totals === 'object');
+      assert.ok(typeof json.month === 'object');
+      assert.ok(Array.isArray(json.by_consumer));
+      assert.ok(Array.isArray(json.by_model));
+    });
+  });
+
+  describe('/api/hourly', () => {
+    it('returns hourly spend rows', async () => {
+      const { status, json } = await req('GET', '/api/hourly');
+      assert.equal(status, 200);
+      assert.equal(json.period, 'today');
+      assert.ok(Array.isArray(json.rows));
+    });
+  });
+
+  describe('/api/top-operations', () => {
+    it('returns top expensive calls', async () => {
+      const { status, json } = await req('GET', '/api/top-operations');
+      assert.equal(status, 200);
+      assert.equal(json.period, 'today');
+      assert.ok(Array.isArray(json.rows));
+    });
+  });
+
+  describe('/api/cache-estimation', () => {
+    it('returns estimation stats with summary', async () => {
+      const { status, json } = await req('GET', '/api/cache-estimation');
+      assert.equal(status, 200);
+      assert.ok(Array.isArray(json.rows));
+      assert.ok(typeof json.summary === 'object');
+      assert.ok(typeof json.summary.estimated_calls === 'number');
+      assert.ok(typeof json.summary.actual_calls === 'number');
+    });
+  });
+
   describe('/api/hourly-breakdown', () => {
     it('returns hours array', async () => {
       const { status, json } = await req('GET', '/api/hourly-breakdown');

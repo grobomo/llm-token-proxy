@@ -142,7 +142,7 @@ Failed calls (HTTP 4xx/5xx) are filtered from cost panels to reduce noise.
 ## Testing
 
 ```bash
-npm test          # 51 tests — 13 cache-estimator unit + 38 e2e (mock upstream + real proxy)
+npm test          # 60 tests — 13 cache-estimator unit + 47 e2e (mock upstream + real proxy)
 ```
 
 ## Known limitations / TODO
