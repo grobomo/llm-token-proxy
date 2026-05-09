@@ -726,8 +726,7 @@ router.post('/purge', (req, res) => {
   try {
     let body = {};
     try {
-      if (req.body && typeof req.body === 'object') body = req.body;
-      else if (req.body) body = JSON.parse(req.body.toString('utf8'));
+      if (req.body && req.body.length > 0) body = JSON.parse(req.body.toString('utf8'));
     } catch { /* defaults */ }
 
     const days = Math.max(1, parseInt(body.days) || 90);
