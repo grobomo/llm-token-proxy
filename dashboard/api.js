@@ -426,4 +426,108 @@ router.get('/cache-estimation', (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// POST /api/backfill-cache
+// Retroactively estimate cache tokens for historical calls missing cache data.
+// Body: { dryRun: true|false } — defaults to dry run.
+// Only accessible from localhost.
+// ---------------------------------------------------------------------------
+const { modelUsesCaching, DEFAULT_SYSTEM_PROMPT_TOKENS } = require('../lib/cache-estimator');
+const pricing = require('../pricing');
+
+router.post('/backfill-cache', (req, res) => {
+  // Localhost-only
+  const ip = req.socket.remoteAddress;
+  if (ip !== '127.0.0.1' && ip !== '::1' && ip !== '::ffff:127.0.0.1') {
+    return res.status(403).json({ error: 'internal_only' });
+  }
+
+  let body = {};
+  try {
+    if (req.body && req.body.length > 0) body = JSON.parse(req.body.toString('utf8'));
+  } catch { /* empty body = defaults */ }
+  const dryRun = body.dryRun !== false; // default true for safety
+
+  try {
+    const candidates = db.query(`
+      SELECT id, model, upstream, session_id, input_tokens, output_tokens,
+             cache_read_tokens, cache_write_tokens, estimated_cost_usd, timestamp
+      FROM usage_log
+      WHERE upstream != 'anthropic'
+        AND cache_estimated = 0
+        AND cache_read_tokens = 0
+        AND cache_write_tokens = 0
+        AND output_tokens > 0
+      ORDER BY timestamp ASC
+    `);
+
+    const eligible = candidates.filter(r => modelUsesCaching(r.model));
+    if (eligible.length === 0) {
+      return res.json({ updated: 0, message: 'No eligible rows.' });
+    }
+
+    const promptSize = DEFAULT_SYSTEM_PROMPT_TOKENS;
+    const cacheWriteEstimate = Math.floor(promptSize * 0.30);
+    const sessionFirstCall = new Set();
+    let updated = 0;
+    let totalCostDelta = 0;
+    const details = [];
+
+    for (const row of eligible) {
+      const sessionKey = row.session_id || `no-session-${row.id}`;
+      const isFirst = !sessionFirstCall.has(sessionKey);
+      if (isFirst) sessionFirstCall.add(sessionKey);
+
+      const cacheRead = isFirst ? 0 : promptSize;
+      const cacheWrite = isFirst ? cacheWriteEstimate : 0;
+
+      const config = getConfig();
+      pricing.loadPricing(config.pricing);
+      const newCost = pricing.calculateCost(row.model, {
+        input_tokens: row.input_tokens,
+        output_tokens: row.output_tokens,
+        cache_read_input_tokens: cacheRead,
+        cache_creation_input_tokens: cacheWrite,
+      });
+
+      const costDelta = newCost - row.estimated_cost_usd;
+      totalCostDelta += costDelta;
+
+      if (!dryRun) {
+        db.run(
+          `UPDATE usage_log SET cache_read_tokens = ?, cache_write_tokens = ?, cache_estimated = 1, estimated_cost_usd = ? WHERE id = ?`,
+          cacheRead, cacheWrite, newCost, row.id
+        );
+      }
+
+      details.push({
+        id: row.id, model: row.model,
+        session: (row.session_id || 'none').slice(0, 8),
+        type: isFirst ? 'cache_write' : 'cache_read',
+        tokens: isFirst ? cacheWrite : cacheRead,
+        old_cost: parseFloat(row.estimated_cost_usd.toFixed(4)),
+        new_cost: parseFloat(newCost.toFixed(4)),
+        delta: parseFloat(costDelta.toFixed(4)),
+      });
+      updated++;
+    }
+
+    // Bust the cache so dashboard refreshes
+    if (!dryRun) apiCache.clear();
+
+    res.json({
+      dry_run: dryRun,
+      updated,
+      sessions: sessionFirstCall.size,
+      cache_writes: sessionFirstCall.size,
+      cache_reads: updated - sessionFirstCall.size,
+      total_cost_delta: parseFloat(totalCostDelta.toFixed(4)),
+      details: details.length <= 100 ? details : details.slice(0, 100),
+      truncated: details.length > 100,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'internal_error', message: err.message });
+  }
+});
+
 module.exports = router;

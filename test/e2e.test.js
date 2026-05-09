@@ -532,6 +532,20 @@ describe('E2E: Token Proxy', { timeout: 30000 }, () => {
   });
 
   // =========================================================================
+  // Cache backfill (admin)
+  // =========================================================================
+
+  describe('/api/backfill-cache', () => {
+    it('returns dry-run results by default', async () => {
+      const { status, json } = await req('POST', '/api/backfill-cache', {});
+      assert.equal(status, 200);
+      assert.equal(json.dry_run, true);
+      assert.ok(typeof json.updated === 'number');
+      assert.ok(typeof json.sessions === 'number');
+    });
+  });
+
+  // =========================================================================
   // 404 catch-all
   // =========================================================================
 

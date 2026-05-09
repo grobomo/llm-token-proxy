@@ -311,4 +311,14 @@ function close() {
   }
 }
 
-module.exports = { init, logUsage, getUsage, getTotals, getBudgetStatus, query, close };
+/**
+ * Execute a parameterized write statement (UPDATE/INSERT/DELETE).
+ * Returns { changes } with the number of affected rows.
+ */
+function run(sql, ...params) {
+  if (!db) throw new Error('Database not initialized');
+  const stmt = db.prepare(sql);
+  return stmt.run(...params);
+}
+
+module.exports = { init, logUsage, getUsage, getTotals, getBudgetStatus, query, run, close };

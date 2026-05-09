@@ -32,3 +32,6 @@ SESSION_STATE.md
 .claude/
 archive/
 backups/
+
+# Screenshots (dashboard verification artifacts)
+dashboard-*.png
