@@ -62,3 +62,4 @@ All systemd timers active: spike-detect (30min), watchdog (5min), daily-report (
 - [ ] T111: Pluggable storage backend (Postgres) for multi-host deployments.
 - [ ] T112: Pluggable alerting (Slack, webhook, email) — `alert_channel` is wired in config but not implemented.
 - [ ] T113: Consider replacing custom proxy.js with LiteLLM proxy (same tech RDsec runs upstream). Battle-tested streaming/compression. Keep if per-project attribution is preserved.
+- [ ] T116: Custom domain for dashboard — `tokentracker.click` available via Route53 ($3/year). Currently served at `ec2-54-160-207-89.compute-1.amazonaws.com`. Registration + A record + optional HTTPS (Let's Encrypt) when ready.
