@@ -1,19 +1,20 @@
 # TODO
 
-## Session State (2026-05-09 17:10 CDT)
+## Session State (2026-05-09 17:21 CDT)
 
-**Windows fork** of `llm-token-proxy`. Published to `grobomo/llm-token-proxy` (public). All commits pushed through `7e6cc02`.
+**Windows fork** of `llm-token-proxy`. Published to `grobomo/llm-token-proxy` (public). All commits pushed through `fee7ade`.
 
 ### Session handoff
 
 **What was done this session:**
 1. **T145: .gitignore** — Added `.playwright-mcp/` to .gitignore.
-2. **T146: Favicon** — Inline SVG favicon eliminates /favicon.ico 404. Route handler added to proxy.js.
-3. **T147: CSV export** — `GET /api/export?range=24h` downloads usage data as CSV. Export button added to dashboard header.
+2. **T146: Favicon** — Inline SVG favicon + route handler eliminates /favicon.ico 404.
+3. **T147: CSV export** — `GET /api/export?range=24h` downloads usage data as CSV. Export button in dashboard header.
 4. **T148: API index** — `GET /api/` returns self-documenting endpoint list with descriptions and params.
-5. **Fix: shortModel() rendering** — T143's XSS fix double-escaped model names (esc(shortModel(...)) escaped the HTML tags shortModel generates). Fixed by moving esc() inside shortModel() and removing outer wrapping.
-6. Tests: 60 → 62. All pass. CI green (both Tests + Secret Scan).
-7. All changes synced to WSL. Proxy restarted.
+5. **T149: Session analytics** — `GET /api/sessions` groups by session_id with cost, call count, duration, models. Dashboard panel added.
+6. **Fix: shortModel() rendering** — T143's XSS fix double-escaped model names. Fixed by moving esc() inside shortModel().
+7. Tests: 60 → 64. CI green (both Tests + Secret Scan).
+8. All changes synced to WSL. Proxy restarted. Dashboard visually verified.
 
 ### Next session priorities
 - [ ] T133: Fix blueprint-extra sharp module — TODO written in blueprint-extra-mcp/TODO.md (cross-project)
