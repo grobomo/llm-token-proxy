@@ -1,0 +1,93 @@
+# LLM Token Proxy — example configuration.
+# Copy this to config.yaml and edit. config.yaml is gitignored.
+
+port: 4100
+bind: 127.0.0.1   # 0.0.0.0 if Windows clients need to reach a WSL2 instance
+
+# --- Upstreams (preferred over the legacy single `upstream:` field) ---
+# The proxy auto-routes to the matching upstream based on API-key prefix.
+# Example: route Anthropic-formatted keys (sk-ant-...) to api.anthropic.com,
+# and route LiteLLM/RDsec-style JWTs (eyJ...) to your gateway.
+upstreams:
+  anthropic:
+    url: https://api.anthropic.com/v1
+    key_pattern: "sk-ant-"
+  # Add your own upstreams below. Examples:
+  # litellm:
+  #   url: https://your-litellm.example.com/v1
+  #   key_pattern: "eyJ"
+  # openai:
+  #   url: https://api.openai.com/v1
+  #   key_pattern: "sk-"
+
+# Optional legacy single-upstream fallback (used if no key_pattern matches).
+# Recommend leaving unset; force callers to use a known key prefix.
+# upstream: https://api.anthropic.com/v1
+
+db: ./usage.db
+
+# Cost per million tokens (USD). Update as pricing changes — see
+# https://www.anthropic.com/pricing and your gateway's published rates.
+# NOTE: Use prefix matching — "claude-4.6-opus" also covers "claude-4.6-opus-aws".
+pricing:
+  claude-opus-4-7:    { input: 15.00, output: 75.00, cache_read: 1.50, cache_write: 18.75 }
+  claude-4.6-opus:    { input: 15.00, output: 75.00, cache_read: 1.50, cache_write: 18.75 }
+  claude-opus-4-6:    { input: 15.00, output: 75.00, cache_read: 1.50, cache_write: 18.75 }
+  claude-4.6-sonnet:  { input: 3.00, output: 15.00, cache_read: 0.30, cache_write: 3.75 }
+  claude-sonnet-4-6:  { input: 3.00, output: 15.00, cache_read: 0.30, cache_write: 3.75 }
+  claude-4.5-haiku:   { input: 1.00, output:  5.00, cache_read: 0.10, cache_write: 1.25 }
+  claude-haiku-4-5:   { input: 1.00, output:  5.00, cache_read: 0.10, cache_write: 1.25 }
+  default:            { input: 3.00, output: 15.00, cache_read: 0.30, cache_write: 3.75 }
+
+budget:
+  monthly_limit: 100.00     # USD
+  alert_at: [50, 75, 90]    # percent thresholds
+  alert_channel: log        # log | slack | webhook
+
+# --- Alerting (T112) ---
+# Unified alerting for budget thresholds, spike detection, health checks.
+# Multiple channels can fire simultaneously. Configure URLs via env vars or here.
+alerting:
+  slack_webhook: ""          # or set SLACK_WEBHOOK_URL env var
+  webhook_url: ""            # or set ALERT_WEBHOOK_URL env var
+  # email:                   # future: SMTP config for email alerts
+
+dashboard:
+  enabled: true
+  path: /dashboard
+  refresh_interval: 60      # seconds
+
+log:
+  level: info               # info | debug | warn | error
+  requests: true
+
+# --- Model overrides (T114) ---
+# Route specific request patterns to cheaper models for cost optimization.
+# Rules are evaluated in order; first match wins. Disabled by default.
+#
+# Match criteria (all specified conditions must be true):
+#   model:        exact string or glob pattern (e.g. "claude-*-opus-aws")
+#   consumer:     match X-Consumer header value
+#   no_cache:     true = only match requests with no cache_control markers
+#   max_messages: only match if messages array length is below threshold
+#
+# model_overrides:
+#   - name: sub-agent-to-haiku
+#     match:
+#       model: "claude-4.6-opus-aws"
+#       no_cache: true
+#     replace_model: "claude-4.5-haiku-aws"
+#     enabled: true
+
+# --- Per-project attribution (T102) ---
+# Claude Code sends X-Project and X-Claude-Code-Session-Id headers when configured.
+# Add to each project's .claude/settings.json:
+#
+#   {
+#     "env": {
+#       "ANTHROPIC_CUSTOM_HEADERS": "X-Project: my-project-name"
+#     }
+#   }
+#
+# The proxy logs these automatically — no server-side config needed.
+# Query per-project spend: SELECT project, SUM(estimated_cost_usd) FROM usage_log GROUP BY project

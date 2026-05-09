@@ -1,0 +1,32 @@
+port: 14100
+bind: 127.0.0.1
+
+upstreams:
+  mock:
+    url: http://127.0.0.1:14200/v1
+    key_pattern: "sk-test"
+
+db: /tmp/proxy-e2e-test.db
+
+pricing:
+  claude-haiku-4-5:   { input: 1.00, output: 5.00, cache_read: 0.10, cache_write: 1.25 }
+  claude-sonnet-4-6:  { input: 3.00, output: 15.00, cache_read: 0.30, cache_write: 3.75 }
+  claude-opus-4-7:    { input: 15.00, output: 75.00, cache_read: 1.50, cache_write: 18.75 }
+  default:            { input: 3.00, output: 15.00, cache_read: 0.30, cache_write: 3.75 }
+
+budget:
+  monthly_limit: 100.00
+  alert_at: [50, 75, 90]
+  alert_channel: log
+
+alerting:
+  slack_webhook: ""
+  webhook_url: ""
+
+dashboard:
+  enabled: true
+  path: /dashboard
+  refresh_interval: 60
+
+log:
+  level: error

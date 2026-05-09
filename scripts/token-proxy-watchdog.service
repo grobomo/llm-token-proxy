@@ -1,0 +1,9 @@
+[Unit]
+Description=Token Proxy Watchdog — end-to-end self-test
+After=default.target
+
+[Service]
+Type=oneshot
+# Adjust ExecStart to the path where you cloned this repo:
+ExecStart=%h/llm-token-proxy/scripts/watchdog.sh
+# No Restart — the timer handles scheduling.

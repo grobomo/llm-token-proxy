@@ -1,0 +1,17 @@
+[Unit]
+Description=LLM Token Proxy — usage monitoring + cost tracking
+After=network.target
+
+[Service]
+Type=simple
+# Adjust WorkingDirectory to where you cloned this repo:
+WorkingDirectory=%h/llm-token-proxy
+# ExecStart: change `node` to your installed Node binary if not in PATH.
+# Node 18+ required (uses global fetch / undici).
+ExecStart=/usr/bin/node proxy.js
+Restart=on-failure
+RestartSec=5
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=default.target
