@@ -170,6 +170,35 @@ app.get('/health', async (req, res) => {
   });
 });
 
+app.get('/diagnose', async (req, res) => {
+  const primaryUpstream = UPSTREAMS.length > 0 ? UPSTREAMS[0].url : UPSTREAM;
+  let upstreamReachable = false;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 5000);
+    const r = await fetch(primaryUpstream.replace(/\/v1\/?$/, ''), {
+      method: 'HEAD',
+      signal: ctrl.signal,
+    }).catch(() => null);
+    clearTimeout(timer);
+    upstreamReachable = (r !== null);
+  } catch { /* unreachable */ }
+
+  const cause = upstreamReachable ? 'healthy' : 'upstream_down';
+  const detail = upstreamReachable
+    ? 'Proxy and upstream both healthy'
+    : `Proxy is running but upstream (${primaryUpstream}) is unreachable`;
+
+  res.status(upstreamReachable ? 200 : 503).json({
+    cause,
+    proxy:    true,
+    upstream: upstreamReachable,
+    detail,
+    upstreams: UPSTREAMS.map(u => u.name),
+    ts:       new Date().toISOString(),
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Dashboard routes
 // ---------------------------------------------------------------------------

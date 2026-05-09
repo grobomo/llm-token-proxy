@@ -55,11 +55,23 @@ All systemd timers active: spike-detect (30min), watchdog (5min), daily-report (
   - Remaining savings require architectural changes (session persistence, compaction) — out of scope for now.
 - [ ] T115: Per-project hourly bar chart — waiting for more projects to produce tagged data. Only `llm-token-proxy` tagged so far.
 
+## Medium (API Retry Integration)
+
+- [ ] T117: Bundle api_check.py with token proxy for auto-run + client diagnostics.
+  - **Goal**: When proxy restarts or upstream goes down, clients can query the proxy to troubleshoot.
+  - **What exists**: `context-reset/api_check.py` has `diagnose()` which queries `localhost:4100/health` and distinguishes proxy_down vs upstream_down vs both_down.
+  - **Changes needed**:
+    1. Copy/vendor `api_check.py` into this project (or pip-install from context-reset)
+    2. Auto-start watcher (`api_check.py --watch`) when proxy starts (systemd or child process)
+    3. Add `/diagnose` endpoint to proxy.js that runs the two-layer check and returns `{cause, proxy, upstream, detail}` JSON — clients call this instead of guessing
+    4. Watchdog timer (already exists at 5min) could restart proxy on crash and trigger api_check watcher
+  - **Client usage**: When Claude Code gets an API error, the stop hook calls `curl localhost:4100/diagnose` to determine if proxy needs restart vs wait for Anthropic
+
 ## Low / Backlog
 
 - [ ] T109: Request dedup / cache layer (return cached identical-prompt responses without an upstream round-trip).
 - [ ] T110: 24h stability test under realistic mixed load.
 - [ ] T111: Pluggable storage backend (Postgres) for multi-host deployments.
-- [ ] T112: Pluggable alerting (Slack, webhook, email) — `alert_channel` is wired in config but not implemented.
+- [x] T112: Pluggable alerting (Slack, webhook, email) — `lib/alert.js` implements log/slack/webhook. Wired into spike-detect.js. Config: `alerting.slack_webhook` + `alerting.webhook_url`. Set env vars or config.yaml to activate.
 - [ ] T113: Consider replacing custom proxy.js with LiteLLM proxy (same tech RDsec runs upstream). Battle-tested streaming/compression. Keep if per-project attribution is preserved.
-- [ ] T116: Custom domain for dashboard — `tokentracker.click` available via Route53 ($3/year). Currently served at `ec2-54-160-207-89.compute-1.amazonaws.com`. Registration + A record + optional HTTPS (Let's Encrypt) when ready.
+- [ ] T116: Custom domain `tokentracker.click` — registered via Route53, A record created → 54.160.207.89. **Pending**: DNS propagation + Let's Encrypt cert (`deploy/setup-https.sh`). Static IP attached. Port 443 open. Server has HTTPS code ready.
