@@ -1,13 +1,12 @@
 # TODO
 
-## Session State (2026-05-09 00:10 UTC)
+## Session State (2026-05-09 01:25 UTC)
 
-Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `004251f`.
-`gh_auto` fixed: inline credential helper for git, active-account switch/restore for gh.
-`gh-auto-gate` + `proxy-restart-gate` hooks active (gate narrowed to only block proxy service restart).
-14 projects auto-configured with `X-Project` headers. Proxy restarted with schema v4.
-Daily cron/timers: spike-detect (30min), daily-report (23:47), onedrive-sync (23:50), log-rotate (03:03). All with `Persistent=true`.
-`grobomo/openclaw` (private) pushed. `joel-ginsberg_tmemu/chat-exports` (private) pushed.
+Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `4a657c2`.
+Schema v5 active (original_model column). Model override infrastructure deployed but no active rules.
+Dashboard enhanced: cost-by-model + cache economics panels. Headless chromium screenshots work.
+14 projects auto-configured with X-Project headers — confirmed populating in usage.db.
+All systemd timers active: spike-detect (30min), watchdog (5min), daily-report (23:47), onedrive-sync (23:50), log-rotate (03:03).
 
 ### Next session priorities
 - [x] Visually verify dashboard — confirmed via `chromium-browser --headless --no-sandbox`. Bars have varied heights, color-coded (blue/yellow/red). Pie data flows via API.
@@ -41,7 +40,7 @@ Daily cron/timers: spike-detect (30min), daily-report (23:47), onedrive-sync (23
 
 ## Medium
 
-- [x] T104: Spike detection / alerting. Implemented `scripts/spike-detect.js` (commit 4fe7adf). Compares today vs 7d rolling avg, exits 1 on spike, writes `~/.token-proxy-spike-alert`. **Remaining**: wire into cron (recommended: every 30 min).
+- [x] T104: Spike detection / alerting. `scripts/spike-detect.js` (commit 4fe7adf). Compares today vs 7d rolling avg, exits 1 on spike, writes `~/.token-proxy-spike-alert`. Systemd timer runs every 30 min.
 - [x] T105: Cost-report reconciliation script. `scripts/reconcile-costs.js` — accepts `--report <file>` or `--api` with `ANTHROPIC_ADMIN_KEY`. Commit f73bd84.
 - [x] T106: Data-driven consumer enforcement. `scripts/enforce-routing.js` — flags high cache_write consumers, untagged projects, unknown consumers. Commit 6177ae0. Key finding: upstream (anthropic vs rdsec) does NOT affect cost — same model = same price. Primary cost driver is cache_write volume per session start ($18.75/M).
 - [x] T107: Dashboard: spike chart + top-N expensive operations. Commit ed48545. Hourly spend bar chart + top 8 costly calls table. Per-project leaderboard already existed from initial dashboard.
@@ -49,13 +48,14 @@ Daily cron/timers: spike-detect (30min), daily-report (23:47), onedrive-sync (23
 
 ## Medium (New)
 
-- [ ] T114: Cost optimization — reduce daily spend. Analysis (2026-05-09):
-  - `claude-opus-4-6` ($193/d): 661 calls with 89M cache_read tokens. These are the main sessions.
-  - `claude-4.6-opus-aws` ($41/d): 1446 calls, full sessions via RDsec (NOT sub-agents). Reports 0 cache but has cache markers + 59-215 msgs. Cost is likely underreported by gateway.
-  - Cache write $49/d from ~10 session starts.
-  - Model override infrastructure added (config.model_overrides) but no safe targets identified yet.
-  - Real savings levers: fewer session restarts, shorter sessions, or routing genuinely lightweight ops to Haiku.
-  - Dashboard now shows model breakdown + cache economics for ongoing visibility.
+- [ ] T114: Cost optimization — reduce daily spend from ~$300/day. Updated analysis (2026-05-09 01:20 UTC):
+  - `claude-opus-4-6` ($246/d): 875 calls with 116M cache_read. Main interactive sessions. Cost is dominated by cache_read ($172) + output ($72).
+  - `claude-4.6-opus-aws` ($51/d): 2041 calls, avg 27 input tokens, 0 cache. Background/fast-mode calls. Almost entirely output cost ($75/M).
+  - Cache write: $59/d from 3.1M tokens (session starts).
+  - **Savings potential**: routing `4.6-opus-aws` → Sonnet saves **$41/day**; → Haiku saves **$48/day**.
+  - Model override infrastructure ready (config.model_overrides rule exists, disabled). Dashboard `/api/savings-potential` endpoint + savings panel live.
+  - **Next**: Enable `sub-agent-to-haiku` override with `replace_model: claude-4.6-sonnet-aws` (Sonnet, not Haiku) and monitor quality. Add max_messages guard.
+- [ ] T115: Per-project hourly bar chart — second chart below the model chart once more projects are tagged.
 
 ## Low / Backlog
 
