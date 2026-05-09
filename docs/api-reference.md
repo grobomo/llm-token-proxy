@@ -301,6 +301,28 @@ Cost optimization levers: session restart count, cache write cost, savings per f
 
 Today's spend vs yesterday. Accepts `?tz_offset=<minutes>` for timezone adjustment.
 
+### GET /api/db-stats
+
+Database statistics: row count, date range, model/project/session counts, total cost.
+
+```json
+{ "rows": 99, "oldest": "2026-05-09T19:25:28Z", "newest": "2026-05-09T21:14:57Z", "models": 4, "projects": 2, "sessions": 1, "total_cost": 17.25 }
+```
+
+### POST /api/purge
+
+Delete usage data older than N days. **Localhost only**, dry-run by default.
+
+```bash
+# Preview what would be deleted (safe)
+curl -X POST http://127.0.0.1:4100/api/purge -H 'Content-Type: application/json' -d '{"days": 90}'
+
+# Actually delete
+curl -X POST http://127.0.0.1:4100/api/purge -H 'Content-Type: application/json' -d '{"days": 90, "dryRun": false}'
+```
+
+Also available as CLI: `node scripts/data-retention.js --days 90 --execute`
+
 ### GET /api/cache-stats
 
 Response cache hit/miss statistics. Bypasses the cache itself.

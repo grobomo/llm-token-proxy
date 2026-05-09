@@ -545,6 +545,24 @@ describe('E2E: Token Proxy', { timeout: 30000 }, () => {
     });
   });
 
+  describe('/api/purge', () => {
+    it('returns dry-run preview by default', async () => {
+      const { status, json } = await req('POST', '/api/purge', { days: 90 });
+      assert.equal(status, 200);
+      assert.equal(json.dryRun, true);
+      assert.equal(json.days, 90);
+      assert.ok(typeof json.would_delete === 'number');
+      assert.ok(typeof json.would_delete_cost === 'number');
+      assert.ok(json.message.includes('Would delete'));
+    });
+
+    it('defaults to 90 days when days not specified', async () => {
+      const { status, json } = await req('POST', '/api/purge', {});
+      assert.equal(status, 200);
+      assert.equal(json.days, 90);
+    });
+  });
+
   // =========================================================================
   // Dashboard API endpoints (T141)
   // =========================================================================

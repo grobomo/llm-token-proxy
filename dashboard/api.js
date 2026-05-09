@@ -43,6 +43,7 @@ router.get('/', (req, res) => {
       { method: 'GET', path: '/api/sessions', description: 'Per-session cost analytics', params: ['range=1h|6h|12h|24h|7d|30d', 'limit=<n>'] },
       { method: 'GET', path: '/api/export', description: 'Download usage data as CSV', params: ['range=1h|6h|12h|24h|7d|30d'] },
       { method: 'GET', path: '/api/db-stats', description: 'Database stats: row count, date range, total cost' },
+      { method: 'POST', path: '/api/purge', description: 'Delete usage data older than N days (localhost only)', params: ['body: {days: 90, dryRun: true|false}'] },
       { method: 'POST', path: '/api/backfill-cache', description: 'Retroactively estimate cache tokens (localhost only)', params: ['body: {dryRun: true|false}'] },
     ],
   });
@@ -705,6 +706,67 @@ router.get('/db-stats', (req, res) => {
       projects: row.projects || 0,
       sessions: row.sessions || 0,
       total_cost: parseFloat((row.total_cost || 0).toFixed(2)),
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'internal_error', message: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/purge
+// Delete usage data older than N days. Localhost-only, dry-run by default.
+// Body: { days: 90, dryRun: true }
+// ---------------------------------------------------------------------------
+router.post('/purge', (req, res) => {
+  const ip = req.socket.remoteAddress;
+  if (ip !== '127.0.0.1' && ip !== '::1' && ip !== '::ffff:127.0.0.1') {
+    return res.status(403).json({ error: 'internal_only' });
+  }
+
+  try {
+    let body = {};
+    try {
+      if (req.body && typeof req.body === 'object') body = req.body;
+      else if (req.body) body = JSON.parse(req.body.toString('utf8'));
+    } catch { /* defaults */ }
+
+    const days = Math.max(1, parseInt(body.days) || 90);
+    const dryRun = body.dryRun !== false; // default true for safety
+    const interval = `-${days} days`;
+
+    // Count rows that would be deleted
+    const preview = db.query(`
+      SELECT COUNT(*) AS count,
+             SUM(estimated_cost_usd) AS cost,
+             MIN(timestamp) AS oldest,
+             MAX(timestamp) AS newest
+      FROM usage_log
+      WHERE timestamp < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
+    `);
+    const p = preview[0] || {};
+
+    if (dryRun) {
+      return res.json({
+        dryRun: true,
+        days,
+        would_delete: p.count || 0,
+        would_delete_cost: parseFloat((p.cost || 0).toFixed(2)),
+        oldest: p.oldest || null,
+        newest: p.newest || null,
+        message: `Would delete ${p.count || 0} rows older than ${days} days. POST with {"dryRun": false} to execute.`,
+      });
+    }
+
+    const result = db.run(
+      `DELETE FROM usage_log WHERE timestamp < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')`
+    );
+
+    res.json({
+      dryRun: false,
+      days,
+      deleted: result.changes || 0,
+      deleted_cost: parseFloat((p.cost || 0).toFixed(2)),
+      message: `Deleted ${result.changes || 0} rows older than ${days} days.`,
     });
   } catch (err) {
     res.status(500).json({ error: 'internal_error', message: err.message });
