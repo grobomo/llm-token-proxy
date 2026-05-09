@@ -24,8 +24,8 @@ Backup zip at `backups/llm-token-proxy.zip`. Original git history at `archive/.g
 **safe-restart.sh fix is only in this Windows fork** — needs to be synced back to WSL project. The deployed version at `~/.openclaw/workspace/token-proxy/scripts/` still has the old version.
 
 ### Next session priorities
-- [ ] T131: Sync safe-restart.sh fix back to WSL project (pre-flight + retry logic)
-- [ ] T132: Implement cache cost estimation — when RDSec returns 0 cache tokens but input_tokens > 50K, estimate cache_write cost. Alternatively query Langfuse/Power BI for real data.
+- [x] T131: Sync safe-restart.sh fix back to WSL project (pre-flight + retry logic) — synced to both git repo and deployed location
+- [x] T132: Cache cost estimation — `lib/cache-estimator.js`. Production data revealed RDSec reports `prompt_tokens` as non-cached only (input_tokens=1 for all Opus calls). Redesigned heuristic: for non-Anthropic upstreams with Claude models and output>0, estimates cache_write (30% of 200K, first session call) or cache_read (200K, subsequent). Schema v6 `cache_estimated` column. `/api/cache-estimation` endpoint. Also fixed non-streaming path missing OpenAI→Anthropic field normalization (pre-existing bug: `in=undefined`). 13 unit tests + 27 e2e = 40 total pass. Deployed to WSL and verified live.
 - [ ] T133: Fix blueprint-extra sharp module — `npm install sharp` in the right location so screenshots work
 - [ ] T130: Cost source-of-truth — RDSec vs C4E cost gap is cache token visibility. RDSec LiteLLM strips cache fields. Check Langfuse/Power BI (tab already open) for per-model per-user breakdown with cache data.
 - [ ] T129: Extract per-user Opus cost from RDSec Langfuse/Power BI to compare against proxy estimates

@@ -463,13 +463,14 @@ function renderBreakdown(data) {
 
   const stats = document.getElementById('cache-stats');
   const t = data.totals || {};
+  const estBadge = t.estimated_calls > 0 ? ` <span style="font-size:0.6em;color:var(--yellow);vertical-align:super" title="${t.estimated_calls} calls used heuristic estimation">est</span>` : '';
   stats.innerHTML = `
     <div class="stat-item">
-      <div class="stat-value">${fmtTokens(t.cache_write)}</div>
+      <div class="stat-value">${fmtTokens(t.cache_write)}${estBadge}</div>
       <div class="stat-label">Cache write</div>
     </div>
     <div class="stat-item">
-      <div class="stat-value">${fmtTokens(t.cache_read)}</div>
+      <div class="stat-value">${fmtTokens(t.cache_read)}${estBadge}</div>
       <div class="stat-label">Cache read</div>
     </div>
     <div class="stat-item">

@@ -8,6 +8,7 @@ const { fetch, Agent } = require('undici');
 
 const db      = require('./db');
 const pricing = require('./pricing');
+const { estimateCacheTokens } = require('./lib/cache-estimator');
 
 // ---------------------------------------------------------------------------
 // Config
@@ -793,23 +794,32 @@ app.all('/v1/*', async (req, res) => {
     // Log after stream completes
     const duration = Date.now() - startTime;
     if (usageFromStream) {
-      const cost = pricing.calculateCost(model, usageFromStream);
+      // Estimate cache tokens for upstreams that strip them (RDSec/LiteLLM)
+      const { usage: estimatedUsage, estimated: cacheEstimated } = estimateCacheTokens({
+        usage: usageFromStream,
+        model,
+        upstream: upstreamName,
+        sessionId,
+        queryDb: (sql) => db.query(sql),
+      });
+      const cost = pricing.calculateCost(model, estimatedUsage);
       // Prefer LiteLLM's authoritative cost when available; use our estimate as fallback
       const finalCost = litellmCost != null ? litellmCost : cost;
       db.logUsage({
         consumer,
         model,
         upstream:           upstreamName,
-        input_tokens:       usageFromStream.input_tokens              || 0,
-        output_tokens:      usageFromStream.output_tokens             || 0,
-        cache_read_tokens:  usageFromStream.cache_read_input_tokens   || 0,
-        cache_write_tokens: usageFromStream.cache_creation_input_tokens || 0,
+        input_tokens:       estimatedUsage.input_tokens              || 0,
+        output_tokens:      estimatedUsage.output_tokens             || 0,
+        cache_read_tokens:  estimatedUsage.cache_read_input_tokens   || 0,
+        cache_write_tokens: estimatedUsage.cache_creation_input_tokens || 0,
         estimated_cost_usd: finalCost,
         duration_ms:        duration,
         http_status:        httpStatus,
         project, task, user_agent: userAgent, session_id: sessionId, original_model: originalModel,
+        cache_estimated:    cacheEstimated,
       });
-      log('info', `[SSE done] consumer=${consumer} model=${model} upstream=${upstreamName} in=${usageFromStream.input_tokens} out=${usageFromStream.output_tokens} cache_r=${usageFromStream.cache_read_input_tokens || 0} cache_w=${usageFromStream.cache_creation_input_tokens || 0} cost=$${finalCost}${litellmCost != null && Math.abs(cost - litellmCost) > 0.001 ? ` (est=$${cost})` : ''} dur=${duration}ms`);
+      log('info', `[SSE done] consumer=${consumer} model=${model} upstream=${upstreamName} in=${estimatedUsage.input_tokens} out=${estimatedUsage.output_tokens} cache_r=${estimatedUsage.cache_read_input_tokens || 0} cache_w=${estimatedUsage.cache_creation_input_tokens || 0}${cacheEstimated ? ' (est)' : ''} cost=$${finalCost}${litellmCost != null && Math.abs(cost - litellmCost) > 0.001 ? ` (est=$${cost})` : ''} dur=${duration}ms`);
     } else {
       // Fallback: use LiteLLM response-cost header if stream parser found nothing
       const fallbackCost = litellmCost || 0;
@@ -853,28 +863,51 @@ app.all('/v1/*', async (req, res) => {
   let usageData  = null;
   try {
     const parsed = JSON.parse(responseBody.toString('utf8'));
-    usageData = parsed.usage || null;
+    const u = parsed.usage;
+    if (u) {
+      // Normalize OpenAI field names → Anthropic for consistent pricing.
+      // OpenAI: prompt_tokens (total), completion_tokens
+      // Anthropic: input_tokens (non-cached), output_tokens, cache_*_input_tokens
+      const cacheRead  = u.cache_read_input_tokens     ?? u.prompt_tokens_details?.cached_tokens          ?? 0;
+      const cacheWrite = u.cache_creation_input_tokens ?? u.prompt_tokens_details?.cache_creation_tokens ?? 0;
+      const totalInput = u.prompt_tokens ?? u.input_tokens ?? 0;
+      usageData = {
+        input_tokens:                u.input_tokens != null ? u.input_tokens : Math.max(0, totalInput - cacheRead - cacheWrite),
+        output_tokens:               u.output_tokens ?? u.completion_tokens ?? 0,
+        cache_read_input_tokens:     cacheRead,
+        cache_creation_input_tokens: cacheWrite,
+      };
+    }
   } catch {
     // Not JSON — skip usage parsing
   }
 
   if (usageData) {
-    const cost = pricing.calculateCost(model, usageData);
+    // Estimate cache tokens for upstreams that strip them (RDSec/LiteLLM)
+    const { usage: estimatedUsage, estimated: cacheEstimated } = estimateCacheTokens({
+      usage: usageData,
+      model,
+      upstream: upstreamName,
+      sessionId,
+      queryDb: (sql) => db.query(sql),
+    });
+    const cost = pricing.calculateCost(model, estimatedUsage);
     const finalCost = litellmCost != null ? litellmCost : cost;
     db.logUsage({
       consumer,
       model,
       upstream:           upstreamName,
-      input_tokens:       usageData.input_tokens              || 0,
-      output_tokens:      usageData.output_tokens             || 0,
-      cache_read_tokens:  usageData.cache_read_input_tokens   || 0,
-      cache_write_tokens: usageData.cache_creation_input_tokens || 0,
+      input_tokens:       estimatedUsage.input_tokens              || 0,
+      output_tokens:      estimatedUsage.output_tokens             || 0,
+      cache_read_tokens:  estimatedUsage.cache_read_input_tokens   || 0,
+      cache_write_tokens: estimatedUsage.cache_creation_input_tokens || 0,
       estimated_cost_usd: finalCost,
       duration_ms:        duration,
       http_status:        httpStatus,
       project, task, user_agent: userAgent, session_id: sessionId, original_model: originalModel,
+      cache_estimated:    cacheEstimated,
     });
-    log('info', `[done] consumer=${consumer} model=${model} upstream=${upstreamName} in=${usageData.input_tokens} out=${usageData.output_tokens} cache_r=${usageData.cache_read_input_tokens || 0} cache_w=${usageData.cache_creation_input_tokens || 0} cost=$${finalCost}${litellmCost != null && Math.abs(cost - litellmCost) > 0.001 ? ` (est=$${cost})` : ''} dur=${duration}ms`);
+    log('info', `[done] consumer=${consumer} model=${model} upstream=${upstreamName} in=${estimatedUsage.input_tokens} out=${estimatedUsage.output_tokens} cache_r=${estimatedUsage.cache_read_input_tokens || 0} cache_w=${estimatedUsage.cache_creation_input_tokens || 0}${cacheEstimated ? ' (est)' : ''} cost=$${finalCost}${litellmCost != null && Math.abs(cost - litellmCost) > 0.001 ? ` (est=$${cost})` : ''} dur=${duration}ms`);
   } else {
     const fallbackCost = litellmCost || 0;
     db.logUsage({

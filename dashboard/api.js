@@ -279,7 +279,8 @@ router.get('/cost-breakdown', (req, res) => {
         SUM(input_tokens) AS input_tokens,
         SUM(output_tokens) AS output_tokens,
         SUM(cache_read_tokens) AS cache_read_tokens,
-        SUM(cache_write_tokens) AS cache_write_tokens
+        SUM(cache_write_tokens) AS cache_write_tokens,
+        SUM(CASE WHEN cache_estimated = 1 THEN 1 ELSE 0 END) AS estimated_calls
       FROM usage_log
       WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
       GROUP BY model
@@ -291,8 +292,9 @@ router.get('/cost-breakdown', (req, res) => {
       acc.calls += m.calls || 0;
       acc.cache_write += m.cache_write_tokens || 0;
       acc.cache_read += m.cache_read_tokens || 0;
+      acc.estimated_calls += m.estimated_calls || 0;
       return acc;
-    }, { cost: 0, calls: 0, cache_write: 0, cache_read: 0 });
+    }, { cost: 0, calls: 0, cache_write: 0, cache_read: 0, estimated_calls: 0 });
 
     res.json({ models, totals });
   } catch (err) {
@@ -346,6 +348,51 @@ router.get('/savings-potential', (req, res) => {
         savings_per_fewer_restart: parseFloat(savingsPerFewerRestart.toFixed(2)),
       },
       note: 'Primary savings lever: fewer session restarts ($' + savingsPerFewerRestart.toFixed(0) + '/restart avoided). Model routing not viable — all opus-aws calls are full sessions (100-300+ messages).',
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'internal_error', message: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/cache-estimation
+// Show cache estimation stats — how many records use estimated vs actual cache data.
+// ---------------------------------------------------------------------------
+router.get('/cache-estimation', (req, res) => {
+  try {
+    const stats = db.query(`
+      SELECT
+        upstream,
+        cache_estimated,
+        COUNT(*) AS calls,
+        SUM(cache_read_tokens) AS total_cache_read,
+        SUM(cache_write_tokens) AS total_cache_write,
+        SUM(estimated_cost_usd) AS total_cost
+      FROM usage_log
+      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+      GROUP BY upstream, cache_estimated
+      ORDER BY total_cost DESC
+    `);
+
+    const summary = stats.reduce((acc, row) => {
+      if (row.cache_estimated) {
+        acc.estimated_calls += row.calls;
+        acc.estimated_cost += row.total_cost || 0;
+      } else {
+        acc.actual_calls += row.calls;
+        acc.actual_cost += row.total_cost || 0;
+      }
+      return acc;
+    }, { estimated_calls: 0, estimated_cost: 0, actual_calls: 0, actual_cost: 0 });
+
+    res.json({
+      rows: stats,
+      summary: {
+        ...summary,
+        estimated_cost: parseFloat(summary.estimated_cost.toFixed(2)),
+        actual_cost: parseFloat(summary.actual_cost.toFixed(2)),
+      },
+      note: 'Estimated rows use heuristic: 85% of input tokens as cache_write (first call) or cache_read (subsequent). Actual rows have cache data from the upstream API.',
     });
   } catch (err) {
     res.status(500).json({ error: 'internal_error', message: err.message });
