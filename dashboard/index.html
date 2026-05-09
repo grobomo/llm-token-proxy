@@ -495,25 +495,36 @@ async function loadBreakdown() {
 function renderSavings(data) {
   const el = document.getElementById('savings-panel');
   const ss = data.session_restarts || {};
+  const restartCost = 2.33;
+  const freshCostPerMsg = 0.03;
+  const avgContext = 134000;
+  const largeCostPerMsg = avgContext * 1.50 / 1e6;
+  const savingPerMsg = largeCostPerMsg - freshCostPerMsg;
+  const breakEven = Math.ceil(restartCost / savingPerMsg);
 
   el.innerHTML = `
-    <div style="display:flex;gap:24px;margin-bottom:12px">
+    <div style="display:flex;gap:24px;margin-bottom:12px;flex-wrap:wrap">
       <div class="stat-item">
         <div class="stat-value">${ss.count || 0}</div>
-        <div class="stat-label">Session restarts (24h)</div>
+        <div class="stat-label">Restarts (24h)</div>
       </div>
       <div class="stat-item">
         <div class="stat-value" style="color:var(--yellow)">${fmtCost(ss.cache_write_cost || 0)}</div>
-        <div class="stat-label">Cache write cost</div>
+        <div class="stat-label">Restart cost</div>
       </div>
       <div class="stat-item">
-        <div class="stat-value" style="color:var(--green)">${fmtCost(ss.savings_per_fewer_restart || 0)}</div>
-        <div class="stat-label">Saved per fewer restart</div>
+        <div class="stat-value">${fmtCost(largeCostPerMsg)}</div>
+        <div class="stat-label">Cost/msg at 134K ctx</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" style="color:var(--green)">${breakEven}</div>
+        <div class="stat-label">Break-even msgs</div>
       </div>
     </div>
     <div style="font-size:11px;color:var(--muted);line-height:1.6">
-      Primary savings lever: fewer session restarts. Each restart creates fresh cache_write at $18.75/M tokens.
-      Model routing not viable — all opus-aws calls are full sessions (100-300+ messages).
+      Tradeoff: restart costs $${restartCost.toFixed(2)} (cache_write) but resets context to ~20K ($${freshCostPerMsg.toFixed(2)}/msg).
+      Without restart, context grows to ~134K ($${largeCostPerMsg.toFixed(2)}/msg).
+      After ${breakEven} messages, a fresh session pays for itself.
     </div>
   `;
 }
@@ -530,16 +541,21 @@ async function loadSavings() {
 
 async function loadTrend() {
   try {
-    const r = await fetch('/api/daily-comparison');
+    const tzOffset = new Date().getTimezoneOffset(); // minutes (positive = behind UTC)
+    const r = await fetch(`/api/daily-comparison?tz_offset=${-tzOffset}`);
     if (!r.ok) return;
     const d = await r.json();
     const el = document.getElementById('trend-label');
+    // Use local timezone for "today" boundary instead of UTC
+    const localToday = new Date().toLocaleDateString('sv'); // YYYY-MM-DD in local tz
+    const localYesterday = new Date(Date.now() - 86400000).toLocaleDateString('sv');
     const todayCost = d.today?.cost || 0;
     const yesterdayCost = d.yesterday?.cost || 0;
+    const tzLabel = new Date().toLocaleTimeString('en-US', {timeZoneName: 'short'}).split(' ').pop();
     if (yesterdayCost > 0) {
-      el.textContent = `today (UTC) ${fmtCost(todayCost)} / yesterday ${fmtCost(yesterdayCost)}`;
+      el.textContent = `today ${fmtCost(todayCost)} / yesterday ${fmtCost(yesterdayCost)} (${tzLabel})`;
     } else {
-      el.textContent = `today ${fmtCost(todayCost)}`;
+      el.textContent = `today ${fmtCost(todayCost)} (${tzLabel})`;
     }
   } catch {}
 }

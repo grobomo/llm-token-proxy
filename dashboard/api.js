@@ -235,17 +235,21 @@ router.get('/hourly-breakdown', (req, res) => {
 // ---------------------------------------------------------------------------
 router.get('/daily-comparison', (req, res) => {
   try {
+    // Accept tz_offset in minutes (e.g. -300 for CDT) to define "today" in user's local time
+    const offsetMin = parseInt(req.query.tz_offset || '0') || 0;
+    const offsetSql = offsetMin >= 0 ? `+${offsetMin} minutes` : `${offsetMin} minutes`;
+
     const today = db.query(`
       SELECT SUM(estimated_cost_usd) AS cost, COUNT(*) AS calls
       FROM usage_log
-      WHERE timestamp >= strftime('%Y-%m-%dT00:00:00Z', 'now')
+      WHERE timestamp >= strftime('%Y-%m-%dT00:00:00Z', 'now', '${offsetSql}')
     `);
 
     const yesterdayFull = db.query(`
       SELECT SUM(estimated_cost_usd) AS cost, COUNT(*) AS calls
       FROM usage_log
-      WHERE timestamp >= strftime('%Y-%m-%dT00:00:00Z', 'now', '-1 day')
-        AND timestamp < strftime('%Y-%m-%dT00:00:00Z', 'now')
+      WHERE timestamp >= strftime('%Y-%m-%dT00:00:00Z', 'now', '-1 day', '${offsetSql}')
+        AND timestamp < strftime('%Y-%m-%dT00:00:00Z', 'now', '${offsetSql}')
     `);
 
     const t = today[0] || { cost: 0, calls: 0 };
@@ -254,6 +258,7 @@ router.get('/daily-comparison', (req, res) => {
     res.json({
       today: { cost: parseFloat((t.cost || 0).toFixed(2)), calls: t.calls || 0 },
       yesterday: { cost: parseFloat((y.cost || 0).toFixed(2)), calls: y.calls || 0 },
+      tz_offset: offsetMin,
     });
   } catch (err) {
     res.status(500).json({ error: 'internal_error', message: err.message });
