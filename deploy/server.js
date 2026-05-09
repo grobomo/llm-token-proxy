@@ -72,21 +72,35 @@ function query(sql) {
   }
 }
 
+function parseRange(req) {
+  const r = req.query.range || '24h';
+  const map = {
+    '1h':  '-1 hours',
+    '6h':  '-6 hours',
+    '12h': '-12 hours',
+    '24h': '-24 hours',
+    '7d':  '-7 days',
+    '30d': '-30 days',
+  };
+  return map[r] || '-24 hours';
+}
+
 // --- Dashboard API (mirrors local proxy endpoints) ---
 app.get('/api/hourly-breakdown', (req, res) => {
+  const interval = parseRange(req);
   const projectRows = query(`
     SELECT strftime('%Y-%m-%dT%H', timestamp) AS hour,
            COALESCE(project, '(untagged)') AS project,
            SUM(estimated_cost_usd) AS cost, COUNT(*) AS calls
     FROM usage_log
-    WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+    WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
     GROUP BY hour, project ORDER BY hour, cost DESC
   `);
   const modelRows = query(`
     SELECT strftime('%Y-%m-%dT%H', timestamp) AS hour,
            model, SUM(estimated_cost_usd) AS cost, COUNT(*) AS calls
     FROM usage_log
-    WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+    WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
     GROUP BY hour, model ORDER BY hour, cost DESC
   `);
 
@@ -105,12 +119,13 @@ app.get('/api/hourly-breakdown', (req, res) => {
 });
 
 app.get('/api/cost-breakdown', (req, res) => {
+  const interval = parseRange(req);
   const models = query(`
     SELECT model, COUNT(*) AS calls, SUM(estimated_cost_usd) AS cost,
            SUM(cache_read_tokens) AS cache_read_tokens,
            SUM(cache_write_tokens) AS cache_write_tokens
     FROM usage_log
-    WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+    WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
     GROUP BY model ORDER BY cost DESC
   `);
   const totals = models.reduce((acc, m) => {
@@ -135,17 +150,18 @@ app.get('/api/daily-comparison', (req, res) => {
 });
 
 app.get('/api/savings-potential', (req, res) => {
+  const interval = parseRange(req);
   const costByType = query(`
     SELECT model, COUNT(*) AS calls, SUM(output_tokens) AS total_output,
            SUM(cache_write_tokens) AS total_cw, SUM(estimated_cost_usd) AS cost
     FROM usage_log
-    WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+    WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
     GROUP BY model ORDER BY cost DESC
   `);
   const sessionStarts = query(`
     SELECT COUNT(*) AS sessions, SUM(cache_write_tokens) AS total_cw
     FROM usage_log
-    WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+    WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
       AND cache_write_tokens > 50000
   `);
   const ss = sessionStarts[0] || { sessions: 0, total_cw: 0 };
@@ -159,11 +175,12 @@ app.get('/api/savings-potential', (req, res) => {
 });
 
 app.get('/api/project-costs', (req, res) => {
+  const interval = parseRange(req);
   const projects = query(`
     SELECT COALESCE(project, '(untagged)') AS project, COUNT(*) AS calls,
            SUM(estimated_cost_usd) AS cost
     FROM usage_log
-    WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+    WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
       AND http_status BETWEEN 200 AND 299
     GROUP BY project ORDER BY cost DESC LIMIT 10
   `);
@@ -172,6 +189,8 @@ app.get('/api/project-costs', (req, res) => {
 });
 
 app.get('/api/sessions', (req, res) => {
+  const interval = parseRange(req);
+  const limit = Math.min(parseInt(req.query.limit) || 20, 50);
   const sessions = query(`
     SELECT session_id, COALESCE(project, '(untagged)') AS project, consumer,
            GROUP_CONCAT(DISTINCT model) AS models, COUNT(*) AS calls,
@@ -179,9 +198,9 @@ app.get('/api/sessions', (req, res) => {
            MIN(timestamp) AS first_call, MAX(timestamp) AS last_call,
            ROUND((julianday(MAX(timestamp)) - julianday(MIN(timestamp))) * 24 * 60, 1) AS duration_min
     FROM usage_log
-    WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+    WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
       AND session_id IS NOT NULL AND http_status BETWEEN 200 AND 299
-    GROUP BY session_id ORDER BY cost DESC LIMIT 20
+    GROUP BY session_id ORDER BY cost DESC LIMIT ${limit}
   `);
   const totalCost = sessions.reduce((s, r) => s + (r.cost || 0), 0);
   res.json({
@@ -197,16 +216,94 @@ app.get('/api/judge-stats', (req, res) => {
 });
 
 app.get('/api/cache-estimation', (req, res) => {
+  const interval = parseRange(req);
   const stats = query(`
     SELECT upstream, cache_estimated, COUNT(*) AS calls,
            SUM(cache_read_tokens) AS total_cache_read,
            SUM(cache_write_tokens) AS total_cache_write,
            SUM(estimated_cost_usd) AS total_cost
     FROM usage_log
-    WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+    WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
     GROUP BY upstream, cache_estimated ORDER BY total_cost DESC
   `);
   res.json({ rows: stats, summary: { estimated_calls: 0, estimated_cost: 0, actual_calls: 0, actual_cost: 0 } });
+});
+
+// --- /diagnose — stub for dashboard health panel ---
+app.get('/diagnose', (req, res) => {
+  const db = getUsageDb();
+  const upstreams = {};
+  if (db) {
+    // Check latest data freshness as a proxy for upstream health
+    const latest = query(`SELECT MAX(timestamp) AS ts FROM usage_log`);
+    const lastTs = latest[0]?.ts;
+    const ageMin = lastTs ? (Date.now() - new Date(lastTs).getTime()) / 60000 : Infinity;
+    upstreams['usage-db'] = ageMin < 60 ? 'reachable' : 'stale';
+  } else {
+    upstreams['usage-db'] = 'unreachable';
+  }
+  res.json({
+    status: db ? 'ok' : 'no_db',
+    mode: 'deploy',
+    upstreams,
+    ts: new Date().toISOString(),
+  });
+});
+
+// --- /api/ — self-documenting API index ---
+app.get('/api/', (req, res) => {
+  res.json({
+    name: 'Token Tracker API (deploy)',
+    endpoints: [
+      { method: 'GET', path: '/api/', description: 'This index' },
+      { method: 'GET', path: '/api/hourly-breakdown', description: 'Hourly spend with model + project breakdown', params: ['range=1h|6h|12h|24h|7d|30d'] },
+      { method: 'GET', path: '/api/cost-breakdown', description: 'Model-level cost + cache economics', params: ['range=1h|6h|12h|24h|7d|30d'] },
+      { method: 'GET', path: '/api/daily-comparison', description: 'Today vs yesterday spend' },
+      { method: 'GET', path: '/api/savings-potential', description: 'Cost optimization levers', params: ['range=1h|6h|12h|24h|7d|30d'] },
+      { method: 'GET', path: '/api/project-costs', description: 'Top projects by cost', params: ['range=1h|6h|12h|24h|7d|30d'] },
+      { method: 'GET', path: '/api/sessions', description: 'Per-session cost analytics', params: ['range=1h|6h|12h|24h|7d|30d', 'limit=<n>'] },
+      { method: 'GET', path: '/api/cache-estimation', description: 'Cache estimation stats', params: ['range=1h|6h|12h|24h|7d|30d'] },
+      { method: 'GET', path: '/api/judge-stats', description: 'Judge decision stats' },
+      { method: 'GET', path: '/api/export', description: 'Download usage data as CSV', params: ['range=1h|6h|12h|24h|7d|30d'] },
+      { method: 'GET', path: '/diagnose', description: 'Health/diagnostic check' },
+    ],
+  });
+});
+
+// --- /api/export — CSV download ---
+app.get('/api/export', (req, res) => {
+  const interval = parseRange(req);
+  const rows = query(`
+    SELECT timestamp, model, upstream, consumer, project, session_id,
+           input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+           cache_estimated, estimated_cost_usd, http_status, duration_ms
+    FROM usage_log
+    WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
+    ORDER BY timestamp DESC
+  `);
+
+  const cols = [
+    'timestamp', 'model', 'upstream', 'consumer', 'project', 'session_id',
+    'input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_tokens',
+    'cache_estimated', 'estimated_cost_usd', 'http_status', 'duration_ms',
+  ];
+  const csvEsc = (v) => {
+    if (v == null) return '';
+    const s = String(v);
+    return s.includes(',') || s.includes('"') || s.includes('\n')
+      ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  const lines = [cols.join(',')];
+  for (const row of rows) {
+    lines.push(cols.map(c => csvEsc(row[c])).join(','));
+  }
+
+  const range = req.query.range || '24h';
+  const filename = `token-usage-${range}-${new Date().toISOString().slice(0, 10)}.csv`;
+  res.set('Content-Type', 'text/csv');
+  res.set('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(lines.join('\n'));
 });
 
 // Favicon

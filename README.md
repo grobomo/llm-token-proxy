@@ -147,7 +147,7 @@ The API is self-documenting: `GET /api/` returns all available endpoints with de
 ## Testing
 
 ```bash
-npm test          # 62 tests — 13 cache-estimator unit + 49 e2e (mock upstream + real proxy)
+npm test          # 64 tests — 13 cache-estimator unit + 51 e2e (mock upstream + real proxy)
 ```
 
 ## Known limitations / TODO
