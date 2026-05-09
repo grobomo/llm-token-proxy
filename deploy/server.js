@@ -2,13 +2,17 @@
 
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const Database = require('better-sqlite3');
 
 const basicAuth = require('./auth');
 const audit = require('./audit');
 
 const PORT = process.env.PORT || 80;
+const HTTPS_PORT = process.env.HTTPS_PORT || 443;
 const USAGE_DB_PATH = process.env.USAGE_DB || path.resolve(__dirname, 'usage.db');
+const DOMAIN = process.env.DOMAIN || 'tokentracker.click';
+const CERT_DIR = `/etc/letsencrypt/live/${DOMAIN}`;
 
 audit.init();
 
@@ -170,7 +174,24 @@ app.use('/dashboard', express.static(DASH_DIR));
 app.get('/dashboard', (req, res) => res.sendFile(path.resolve(DASH_DIR, 'index.html')));
 app.get('/', (req, res) => res.redirect('/dashboard'));
 
+// Start HTTP (redirect to HTTPS if certs exist)
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[dashboard] listening on :${PORT}`);
+  console.log(`[dashboard] HTTP listening on :${PORT}`);
   console.log(`[dashboard] usage.db: ${USAGE_DB_PATH}`);
 });
+
+// Start HTTPS if certs exist
+try {
+  if (fs.existsSync(path.join(CERT_DIR, 'fullchain.pem'))) {
+    const https = require('https');
+    const opts = {
+      cert: fs.readFileSync(path.join(CERT_DIR, 'fullchain.pem')),
+      key: fs.readFileSync(path.join(CERT_DIR, 'privkey.pem')),
+    };
+    https.createServer(opts, app).listen(HTTPS_PORT, '0.0.0.0', () => {
+      console.log(`[dashboard] HTTPS listening on :${HTTPS_PORT} (${DOMAIN})`);
+    });
+  }
+} catch (err) {
+  console.log(`[dashboard] HTTPS not available: ${err.message}`);
+}
