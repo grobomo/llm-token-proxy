@@ -59,6 +59,11 @@ All systemd timers active: spike-detect (30min), watchdog (5min), daily-report (
 
 - [x] T117: Client diagnostics via `/diagnose` endpoint. Checks all upstreams individually, returns per-upstream status + actionable recommendation. Stop rule `14-api-error-diagnose` prompts model to call it on API errors. Watchdog already runs every 5 min. No need to bundle api_check.py — proxy IS the diagnostic layer.
 
+## High (New — Haiku Judge Service)
+
+- [x] T118: `POST /judge` endpoint — calls Haiku for semantic gate decisions, logs to `judge_log` table. `GET /api/judge-stats` for monitoring. Fallback support when Haiku unreachable.
+- [x] T119: `GET /api/judge-stats` — included in T118 implementation. Dashboard panel pending (next session).
+
 ## Low / Backlog
 
 - [x] T109: Response cache for dashboard API — 30s TTL, LRU eviction (lib/cache.js). X-Cache headers + /api/cache-stats endpoint. Full LLM request dedup not viable (all calls are unique conversations).

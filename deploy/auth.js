@@ -86,13 +86,15 @@ function authenticate(req, res, next) {
     }
   }
 
-  // No valid session — redirect browsers to login, 401 for API
+  // No valid session — redirect to login for browsers, clean 401 for API
   req.authSuccess = false;
-  if (req.headers.accept && req.headers.accept.includes('text/html')) {
+  const wantsJson = req.headers.accept && req.headers.accept.includes('application/json');
+  const isXhr = req.headers['x-requested-with'] === 'XMLHttpRequest';
+  if (!wantsJson && !isXhr && req.headers.accept && req.headers.accept.includes('text/html')) {
     return res.redirect('/login');
   }
-  res.set('WWW-Authenticate', 'Basic realm="Token Proxy Dashboard"');
-  return res.status(401).send('Authentication required');
+  // Return 401 WITHOUT WWW-Authenticate to avoid browser auth popup
+  return res.status(401).json({ error: 'unauthorized', login: '/login' });
 }
 
 function requireAdmin(req, res, next) {
