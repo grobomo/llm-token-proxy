@@ -53,11 +53,15 @@
       margin-bottom: 12px;
     }
     .chart {
-      height: 400px;
+      height: 50vh;
+      min-height: 250px;
+      max-height: 500px;
       display: flex;
       align-items: flex-end;
-      gap: 3px;
+      gap: 2px;
       position: relative;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
     }
     .bar-wrap {
       flex: 1;
@@ -65,10 +69,14 @@
       flex-direction: column;
       align-items: center;
       height: 100%;
-      min-width: 20px;
+      min-width: 36px;
       justify-content: flex-end;
       cursor: pointer;
       position: relative;
+    }
+    @media (max-width: 600px) {
+      .chart { gap: 1px; min-height: 200px; }
+      .bar-wrap { min-width: 28px; }
     }
     .bar {
       width: 100%;
@@ -79,11 +87,14 @@
     }
     .bar-wrap:hover .bar { background: var(--text); }
     .bar-wrap .hour-label {
-      font-size: 13px;
+      font-size: 11px;
       font-weight: 500;
       color: var(--muted);
       margin-top: 8px;
       white-space: nowrap;
+    }
+    @media (min-width: 900px) {
+      .bar-wrap .hour-label { font-size: 14px; }
     }
 
     .tooltip {
@@ -152,10 +163,13 @@
     }
 
     .breakdown {
-      padding: 24px;
+      padding: 16px;
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 16px;
+    }
+    @media (max-width: 600px) {
+      .breakdown { grid-template-columns: 1fr; padding: 12px; }
     }
     .breakdown-card {
       background: var(--surface);
@@ -270,7 +284,7 @@ function renderChart(data) {
 
   // Convert UTC hour to CDT (UTC-5)
   function utcToCdt(utcHour) { return (utcHour - 5 + 24) % 24; }
-  function fmtHour(h) { const hr12 = h % 12 || 12; return `${hr12}${h < 12 ? 'a' : 'p'}`; }
+  function fmtHour(h) { const hr12 = h % 12 || 12; return `${hr12}:00${h < 12 ? 'a' : 'p'}`; }
 
   chart.innerHTML = hours.map(h => {
     const pct = Math.max(1, (h.total_cost / maxCost) * 100);
@@ -305,22 +319,32 @@ function renderChart(data) {
     `;
   }).join('');
 
-  // Position tooltips on hover (fixed positioning avoids clipping)
-  chart.querySelectorAll('.bar-wrap').forEach(wrap => {
+  // Position tooltips on hover/tap (fixed positioning avoids clipping)
+  let activeTooltip = null;
+  function showTip(wrap) {
+    if (activeTooltip) activeTooltip.style.display = 'none';
     const tip = wrap.querySelector('.tooltip');
-    wrap.addEventListener('mouseenter', (e) => {
-      const rect = wrap.getBoundingClientRect();
-      tip.style.display = 'block';
-      const tipRect = tip.getBoundingClientRect();
-      let left = rect.left + rect.width / 2 - tipRect.width / 2;
-      let top = rect.top - tipRect.height - 8;
-      if (left < 8) left = 8;
-      if (left + tipRect.width > window.innerWidth - 8) left = window.innerWidth - tipRect.width - 8;
-      if (top < 8) top = rect.bottom + 8;
-      tip.style.left = left + 'px';
-      tip.style.top = top + 'px';
-    });
-    wrap.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+    const rect = wrap.getBoundingClientRect();
+    tip.style.display = 'block';
+    const tipRect = tip.getBoundingClientRect();
+    let left = rect.left + rect.width / 2 - tipRect.width / 2;
+    let top = rect.top - tipRect.height - 8;
+    if (left < 8) left = 8;
+    if (left + tipRect.width > window.innerWidth - 8) left = window.innerWidth - tipRect.width - 8;
+    if (top < 8) top = rect.bottom + 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    activeTooltip = tip;
+  }
+  function hideTip() { if (activeTooltip) { activeTooltip.style.display = 'none'; activeTooltip = null; } }
+
+  chart.querySelectorAll('.bar-wrap').forEach(wrap => {
+    wrap.addEventListener('mouseenter', () => showTip(wrap));
+    wrap.addEventListener('mouseleave', hideTip);
+    wrap.addEventListener('touchstart', (e) => { e.preventDefault(); showTip(wrap); }, { passive: false });
+  });
+  document.addEventListener('touchstart', (e) => {
+    if (activeTooltip && !e.target.closest('.bar-wrap')) hideTip();
   });
 }
 
