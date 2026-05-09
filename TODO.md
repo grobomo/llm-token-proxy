@@ -2,44 +2,32 @@
 
 ## Session State (2026-05-10)
 
-Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `e05f531`.
-Schema v6 active (cache_estimated column). 61 tests passing.
-DB moved to `~/.token-proxy/usage.db` (safe from git operations).
-Proxy running on latest code, LKG recorded.
+Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `f467c87`.
+Schema v6 active (cache_estimated column). 68 tests passing.
+DB at `~/.token-proxy/usage.db` (safe from git operations).
 
 ### Completed this session (2026-05-10)
-- **T131: Safe restart with auto-rollback** — `scripts/safe-restart.sh`:
-  - Pre-flight on temp port, auto-rollback to LKG on failure, DB backup before restart.
-  - Tested end-to-end. All passed.
-- **T132: Settings.json protection audit + fixes:**
-  - Fixed settings-watchdog-gate.js (4 spurious `return null;`). 8 attack vectors tested, all blocked.
-  - Created `switch_llm_provider.py` (backup→mutate→verify→auto-revert, handles chattr +i).
-  - Created `restore-settings.sh` (manual one-command restore).
-  - Created golden backup manifest.
-- **T133: Uptime tracking** — /health now reports started_at, uptime, requests, errors. /api/uptime with historical availability, 4xx/5xx split. Dashboard health bar shows uptime widget.
-- **T134: DB protection** — moved DB to ~/.token-proxy/usage.db (outside git working tree). Tilde expansion in config. safe-restart.sh backs up DB before every restart.
-- **T135: Factory Floor hook architecture** — `docs/hook-architecture.md`:
-  - Design: Opus=supervisor, Haiku=manager, JS gates=gears.
-  - JS gates stay for mechanical enforcement (no change).
-  - Haiku PostToolUse spirit-check: audits whether spirit of rules was followed.
-  - State file bridge: violation-state.json → violation-gate.js blocks next PreToolUse.
-  - Staged in hooks/ dir, install with `bash hooks/install.sh`.
-  - Spirit rules in `~/.claude/proxy/spirit-rules.yaml`.
-- Fixed success_rate: excludes 4xx from denominator (only 2xx vs 5xx).
-- Diagnosed stop hook: auto-continue.js preempts Haiku analysis. Needs hook-runner fix.
-- Recovered all stashed work from broken session. 61 tests pass.
+- **Excel export** — `GET /api/export-excel`: XLSX workbook with embedded OOXML bar chart + 4 sheets (Hourly Spend, Model Breakdown, Project Costs, Raw Data). exceljs + jszip chart injection.
+- **db-stats endpoint** — `GET /api/db-stats` added to deploy/server.js for dashboard parity.
+- **Security hardening** — CSV/Excel filename sanitized, session cookie gets `Secure` flag on HTTPS.
+- **Dashboard** — Excel download button next to CSV.
+- Tests: 67 → 68. All passing.
+
+### Prior session (2026-05-10, WSL)
+- T131: Safe restart with auto-rollback
+- T132: Settings.json protection audit + fixes
+- T133: Uptime tracking
+- T134: DB protection (moved DB outside git)
+- T135: Factory Floor hook architecture
 
 ### Next session priorities
-- [ ] T129: Test Blueprint MCP — use `mcp-manager start blueprint-extra` then call tools. Currently blocked by init timeout (mcp-manager ↔ Blueprint v1.9.21 passive mode handshake). Chrome extension shows connected, relay on port 5555 is up. File issue in blueprint-extra project.
+- [ ] Deploy updated server code to tokentracker.click (rsync deploy/ to Lightsail)
+- [ ] T111: Pluggable storage backend (Postgres) for multi-host deployments
+- [ ] T129: Test Blueprint MCP
 - [ ] T130: Cost source-of-truth (depends on T129)
-- [ ] T111: Wire storage facade into db.js (lib/storage/ exists but not connected)
-- [ ] T136: Build gate to enforce "use mcp-manager for all MCP servers" (PreToolUse gate)
-- [ ] Install spirit-check hooks (`bash hooks/install.sh` — needs hook-runner project or manual install)
-- [ ] Fix stop hook: move auto-continue out of BLOCKING_MODULES, let Haiku decide (needs hook-runner)
-
-### Notes
-- Blueprint relay script removed from this project (archived) — belongs in blueprint-extra project
-- Blueprint access is NOT a blocker — use mcp-manager to start/call. If init times out, ask user to check Chrome extension.
+- [ ] T136: Build gate to enforce "use mcp-manager for all MCP servers"
+- [ ] T140: Consider daily/weekly email digest using dashboard data + range API
+- [ ] Clean up test files: test-export.xlsx, test-export-30d.xlsx
 
 ---
 
