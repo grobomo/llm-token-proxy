@@ -1,28 +1,27 @@
 # TODO
 
-## Session State (2026-05-09 15:54 CDT)
+## Session State (2026-05-09 16:15 CDT)
 
-**Windows fork** of `llm-token-proxy`. Published to `grobomo/llm-token-proxy` (public). All commits pushed through `d889edf`.
+**Windows fork** of `llm-token-proxy`. Published to `grobomo/llm-token-proxy` (public). All commits pushed through `a25aad2`.
 
 ### Session handoff (context-reset)
 
-**What was done this session (2026-05-09 evening):**
-1. **T135: Cache backfill** — `POST /api/backfill-cache` endpoint. Retroactively estimated cache tokens for 64 historical RDSec calls. Cost jumped from $1.71 to $17.25 (10x more accurate). Localhost-only, dry-run by default. Also: `db.run()` for write ops, `cache.clear()`, `scripts/backfill-cache-estimates.js` standalone script.
-2. **T136: Dashboard data quality** — Filter HTTP 400/500 calls from cost-breakdown and project-costs panels. Removes noise from failed hook-system judge calls (25 calls at $0).
-3. **T137: Dashboard UX polish** — `fmtCost` now uses `$0.0001` format for sub-cent values (was `$0.01c`). Hourly chart bars use flex layout with max-width for better sizing with sparse data.
-4. **Test fixes** — `npm test` now runs both test files (was missing cache-estimator.test.js). 41 tests pass.
-5. **Cleanup** — `.gitignore` excludes dashboard screenshot artifacts.
+**What was done this session (2026-05-09 evening, 2 sub-sessions):**
+1. **T135: Cache backfill** — `POST /api/backfill-cache` endpoint. Retroactively estimated cache tokens for 64 historical RDSec calls. Cost jumped from $1.71 to $17.25 (10x more accurate). Localhost-only, dry-run by default. `db.run()`, `cache.clear()`, `scripts/backfill-cache-estimates.js`.
+2. **T136: Dashboard data quality** — Filter HTTP 400/500 calls from cost-breakdown and project-costs panels.
+3. **T137: Dashboard UX polish** — `fmtCost` $0.0001 format (was $0.01c). Flex bar sizing. XSS hardening (esc() for project names + error messages).
+4. **T138: Time range selector** — Dashboard dropdown (1h/6h/12h/24h/7d/30d). All dashboard API endpoints accept `?range=` param. Panel headers update dynamically.
+5. **Test & docs** — 41 tests pass. README updated with dashboard docs, backfill endpoint, new files table.
 
-**All changes synced to WSL** (both git repo and deployed). Proxy restarted and verified. Note: proxy runs from git repo at `/home/ubu/Documents/ProjectsCL1/_grobomo/llm-token-proxy`, not the deployed location.
-
-**Blueprint MCP sharp module still broken** — TODO written in `blueprint-extra-mcp/TODO.md`.
+**All changes synced to WSL** git repo at `/home/ubu/Documents/ProjectsCL1/_grobomo/llm-token-proxy`. Proxy restarted and verified.
 
 ### Next session priorities
-- [x] T131–T132, T134–T137: All complete (see above + Completed section)
 - [ ] T133: Fix blueprint-extra sharp module — TODO written in blueprint-extra-mcp/TODO.md (cross-project)
-- [ ] T130: Cost source-of-truth — partially addressed by T132 (estimation). Needs Langfuse/Power BI for actual per-call data (requires Blueprint MCP SSO)
-- [ ] T129: Extract per-user Opus cost from RDSec Langfuse/Power BI (blocked by T133)
+- [ ] T130: Cost source-of-truth — needs Langfuse/Power BI (blocked by T133)
+- [ ] T129: Extract per-user Opus cost from RDSec (blocked by T133)
 - [ ] T111: Pluggable storage backend (Postgres) for multi-host deployments
+- [ ] T139: Dashboard — add "Cost optimization — session restarts" header to dynamic range labels
+- [ ] T140: Consider daily/weekly email digest using dashboard data + range API
 
 ---
 
