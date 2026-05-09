@@ -63,11 +63,97 @@ All systemd timers active: spike-detect (30min), watchdog (5min), daily-report (
 
 - [x] T118: `POST /judge` endpoint — calls Haiku for semantic gate decisions, logs to `judge_log` table. `GET /api/judge-stats` for monitoring. Fallback support when Haiku unreachable.
 - [x] T119: `GET /api/judge-stats` — included in T118 implementation. Dashboard panel pending (next session).
+- [ ] T126: Tiered judge endpoints — escalation for binary decisions:
+
+  **`POST /judge`** (L1 — Haiku, existing, public)
+  Fast binary allow/block for gate decisions. Current behavior unchanged.
+  Request: `{question, context, gate, project, fallback}`
+  Response: `{allow, reason, confidence, tier: "L1"}`
+
+  **`POST /judge/l2`** (L2 — Sonnet, internal only)
+  When L1 confidence < 0.7 or gate involves security/destructive actions. Deeper reasoning on ambiguous scope, intent, or risk assessment.
+  Request: same + `{escalation_reason, l1_response?}`
+  Response: same + `{tier: "L2", escalated_from}`
+
+  **`POST /judge/l3`** (L3 — Opus, internal only)
+  Final arbiter for high-stakes blocks: destructive operations, security-critical gates, cross-project permission decisions. Only when L2 is split or stakes justify the cost.
+  Request: same + `{escalation_reason, l2_response?}`
+  Response: same + `{tier: "L3", escalated_from}`
+
+  **Auto-escalation**: `/judge` returns confidence. If < 0.7, `_haiku-judge.js` helper auto-calls `/judge/l2`. If L2 confidence still < 0.7 AND gate is tagged `critical: true`, escalates to L3. Total chain cost logged.
+
+  **Security**: L2/L3 bound to 127.0.0.1 only. Rate limit: L2 max 50/hour, L3 max 10/hour. All log to `judge_log` with `tier` column.
+
+  **Escalation Manager** (applies to both T125 and T126):
+
+  The escalation manager is an internal coordination layer that:
+
+  1. **Immediate L1 response**: When L1 decides to escalate, it returns immediately to caller with `{status: "escalating", ticket_id: "esc-abc123", tier: "L1", message: "Low confidence (0.4) — escalating to L2 for deeper analysis. Will update shortly.", poll_url: "/escalation/esc-abc123"}`. Caller is NOT left hanging.
+
+  2. **Background escalation**: Manager spawns L2 (or L3) call async. Tracks state in `escalation_state` table: `{ticket_id, caller, gate, tier_chain: ["L1","L2"], status: "pending|resolved|timeout", created_at, resolved_at, responses: []}`.
+
+  3. **Per-tier session notes**: Each tier writes notes to `data/escalations/{ticket_id}-L1.md`, `{ticket_id}-L2.md`, etc. Contains: prompt received, reasoning, confidence, decision, and why it escalated (or didn't). Creates an audit trail for debugging judgment calls.
+
+  4. **Polling + webhook**: Caller can poll `GET /escalation/{ticket_id}` for status. Optionally pass `webhook_url` in original request — manager POSTs final answer there when resolved. For sync callers (hooks), manager holds connection up to 8s then returns best-available answer with `{partial: true}` if L2/L3 hasn't responded yet.
+
+  5. **Timeout guarantees**: L2 has 10s budget, L3 has 15s budget. If tier times out, manager returns the last-available tier's response (degraded but never hangs). Total max latency: 8s for sync callers, 25s for async.
+
+  6. **State tracking**: `escalation_state` table tracks full lifecycle. Dashboard shows: active escalations, resolution rate per tier, avg escalation latency, timeout rate.
+
+  **Tests** (for both T125 and T126):
+  - Unit: each tier returns correct model/response format
+  - Unit: external IP rejected for /l2 and /l3 (127.0.0.1 only)
+  - Unit: rate limits enforced (429 after threshold)
+  - Integration: L1 low-confidence auto-escalates to L2
+  - Integration: L2 low-confidence + critical gate escalates to L3
+  - Integration: escalation chain logged with cost attribution per tier
+  - Integration: fallback behavior when higher tier unreachable (use lower tier's answer)
+  - E2E: hook-runner `_haiku-judge.js` → `/judge` → confidence < 0.7 → `/judge/l2` → block returned to gate
+  - Escalation manager: immediate "escalating" response returned to caller (not hanging)
+  - Escalation manager: poll endpoint returns resolved answer after L2 completes
+  - Escalation manager: timeout returns best-available answer with partial flag
+  - Escalation manager: per-tier notes files created in data/escalations/
+  - Escalation manager: webhook delivery on resolution
+  - Escalation manager: state table tracks full lifecycle
+
+  **Documentation** (for T125 + T126):
+  - README section: "Tiered LLM Endpoints" — architecture diagram, endpoint reference, auth model, rate limits
+  - README section: "Escalation Manager" — lifecycle flow, polling, webhook, timeout behavior
+  - Inline JSDoc on each endpoint handler: params, response schema, escalation logic
+  - `docs/escalation-flow.md` — sequence diagram (L1 → caller response → background L2 → poll/webhook → resolution)
+  - `docs/api-reference.md` — OpenAPI-style reference for /ask, /ask/l2, /ask/l3, /judge, /judge/l2, /judge/l3, /escalation/{id}
+  - Dashboard: info tooltip on escalation panel explaining what each metric means
+  - Per-tier notes files are self-documenting (markdown with reasoning trace)
+
+## High (Haiku /ask endpoint)
+
+- [ ] T125: Tiered LLM endpoints — internal escalation architecture:
+
+  **`POST /ask`** (L1 — Haiku, $0.001/call, public)
+  General-purpose Haiku caller. Fast, cheap, high-volume. Used by: L1 preprocessor, stop-analysis, gate judges, any hook needing quick structured output.
+  Request: `{system, prompt, caller, maxTokens?, jsonMode?}`
+  Response: `{ok, content, parsed?, ms, tokens, tier: "L1"}`
+
+  **`POST /ask/l2`** (L2 — Sonnet, ~$0.01/call, internal only)
+  For when L1 confidence is low or decision requires deeper reasoning. NOT exposed on public endpoint — only callable from L1 processes (localhost or via `X-Internal: true` header verified by IP). Use cases: ambiguous prompt interpretation, complex scope judgments, code review decisions.
+  Request: same as /ask + `{escalation_reason}`
+  Response: same + `{tier: "L2", escalated_from}`
+
+  **`POST /ask/l3`** (L3 — Opus, ~$0.05/call, internal only)
+  Critical thinking, high-stakes judgments. Only called when L2 is uncertain or stakes are high (security decisions, destructive action approval, architectural judgments). Same internal-only restriction.
+  Request: same as /ask + `{escalation_reason, l2_response?}`
+  Response: same + `{tier: "L3", escalated_from}`
+
+  **Escalation pattern**: L1 calls include confidence score. If confidence < threshold, L1 process auto-escalates to L2. L2 can further escalate to L3. Each tier logs: caller, escalation_reason, which tier answered, total cost chain.
+
+  **Security**: L2/L3 bound to 127.0.0.1 only. Public-facing proxy rejects /ask/l2 and /ask/l3 from external IPs. Rate limit: L2 max 100/hour, L3 max 20/hour.
+
+  All tiers log to unified `ask_log` table with `tier` column for dashboard grouping.
 
 ## Medium (Dashboard UX)
 
 - [x] T120: Renamed to "Token Tracker". Commit a5e2dc4.
-- [ ] T121: Health indicator UX overhaul:
+- [x] T121: Health indicator UX overhaul (commit 957c7a2):
   1. RENAME: "Proxy unreachable" is misleading — if you can see the dashboard, the proxy is up. The label should say "API upstream" not "Proxy". Show "unreachable" only for upstream failures.
   2. HOVER DETAILS: Add tooltip showing: what failed (connection refused vs timeout vs HTTP error), error message, last successful check time, retry countdown (polls every 15s).
   3. STALENESS: Browser tabs throttle setInterval when backgrounded — health dot can show stale failure state. Add visual "stale" indicator (gray dot) if last check was >30s ago, and force-refresh on tab focus.

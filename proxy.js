@@ -262,6 +262,157 @@ app.get('/api/judge-stats', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Tiered /ask endpoints (T125) — general-purpose LLM calls at L1/L2/L3
+// ---------------------------------------------------------------------------
+const ask = require('./lib/ask');
+const rateLimit = require('./lib/rate-limit');
+const escalation = require('./lib/escalation');
+
+ask.init(config.db || path.resolve(__dirname, 'usage.db'));
+escalation.init(config.db || path.resolve(__dirname, 'usage.db'));
+
+function internalOnly(req, res, next) {
+  const ip = req.socket.remoteAddress;
+  if (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1') return next();
+  res.status(403).json({ error: 'internal_only' });
+}
+
+const RATE_LIMITS = { L2: 100, L3: 20 };
+
+app.post('/ask', async (req, res) => {
+  const body = req.body?.length > 0 ? JSON.parse(req.body.toString('utf8')) : {};
+  const { system, prompt, caller, maxTokens, jsonMode, sync, webhook_url } = body;
+
+  if (!prompt) return res.status(400).json({ error: 'missing_fields', required: ['prompt'] });
+
+  const apiKey = extractApiKey(req);
+  if (!apiKey) return res.status(401).json({ error: 'missing_api_key' });
+
+  const proxyUrl = `http://127.0.0.1:${PORT}`;
+  const result = await ask.callTier('L1', { system, prompt, caller, maxTokens, jsonMode }, proxyUrl, apiKey);
+
+  ask.logCall({
+    caller, system, prompt, tier: 'L1',
+    response: result.content?.slice(0, 500),
+    confidence: result.confidence,
+    ms: result.ms,
+    tokens_in: result.tokens?.in || 0,
+    tokens_out: result.tokens?.out || 0,
+  });
+
+  if (result.ok && jsonMode && result.confidence !== null && result.confidence < 0.7) {
+    const ticketId = escalation.createEscalation({
+      caller, gate: body.gate, tierChain: ['L1', 'L2'], request: body, webhookUrl: webhook_url,
+    });
+
+    escalation.addTierResponse(ticketId, { tier: 'L1', ...result });
+    escalation.writeNotes(ticketId, 'L1', `# Escalation ${ticketId} — L1\n\n**Confidence:** ${result.confidence}\n**Reason:** Below 0.7 threshold\n**Response:** ${result.content?.slice(0, 500) || '(empty)'}\n`);
+
+    if (sync) {
+      const l2Result = await Promise.race([
+        ask.callTier('L2', { system, prompt, caller, maxTokens, jsonMode }, proxyUrl, apiKey),
+        new Promise(resolve => setTimeout(() => resolve(null), 8000)),
+      ]);
+
+      if (l2Result && l2Result.ok) {
+        escalation.resolveEscalation(ticketId, l2Result);
+        ask.logCall({
+          caller, system, prompt, tier: 'L2',
+          response: l2Result.content?.slice(0, 500),
+          confidence: l2Result.confidence, ms: l2Result.ms,
+          tokens_in: l2Result.tokens?.in || 0, tokens_out: l2Result.tokens?.out || 0,
+          escalated_from: 'L1', escalation_reason: `L1 confidence ${result.confidence} < 0.7`,
+        });
+        return res.json({ ...l2Result, escalated_from: 'L1', ticket_id: ticketId });
+      }
+      escalation.timeoutEscalation(ticketId, result);
+      return res.json({ ...result, partial: true, ticket_id: ticketId });
+    }
+
+    escalation.runBackground(ticketId, 'L2', { system, prompt, caller, maxTokens, jsonMode }, proxyUrl, apiKey, ask);
+
+    return res.json({
+      status: 'escalating',
+      ticket_id: ticketId,
+      tier: 'L1',
+      message: `Low confidence (${result.confidence}) — escalating to L2`,
+      poll_url: `/escalation/${ticketId}`,
+      l1_response: result,
+    });
+  }
+
+  res.json(result);
+});
+
+app.post('/ask/l2', internalOnly, async (req, res) => {
+  const limit = rateLimit.check('ask-l2', RATE_LIMITS.L2);
+  if (!limit.allowed) {
+    return res.status(429).json({ error: 'rate_limited', remaining: 0, reset_at: new Date(limit.resetAt).toISOString() });
+  }
+
+  const body = req.body?.length > 0 ? JSON.parse(req.body.toString('utf8')) : {};
+  const { system, prompt, caller, maxTokens, jsonMode, escalation_reason } = body;
+
+  if (!prompt) return res.status(400).json({ error: 'missing_fields', required: ['prompt'] });
+
+  const apiKey = extractApiKey(req);
+  if (!apiKey) return res.status(401).json({ error: 'missing_api_key' });
+
+  const proxyUrl = `http://127.0.0.1:${PORT}`;
+  const result = await ask.callTier('L2', { system, prompt, caller, maxTokens, jsonMode }, proxyUrl, apiKey);
+
+  ask.logCall({
+    caller, system, prompt, tier: 'L2',
+    response: result.content?.slice(0, 500),
+    confidence: result.confidence, ms: result.ms,
+    tokens_in: result.tokens?.in || 0, tokens_out: result.tokens?.out || 0,
+    escalated_from: body.escalated_from || null,
+    escalation_reason: escalation_reason || null,
+  });
+
+  res.json({ ...result, remaining_quota: limit.remaining });
+});
+
+app.post('/ask/l3', internalOnly, async (req, res) => {
+  const limit = rateLimit.check('ask-l3', RATE_LIMITS.L3);
+  if (!limit.allowed) {
+    return res.status(429).json({ error: 'rate_limited', remaining: 0, reset_at: new Date(limit.resetAt).toISOString() });
+  }
+
+  const body = req.body?.length > 0 ? JSON.parse(req.body.toString('utf8')) : {};
+  const { system, prompt, caller, maxTokens, jsonMode, escalation_reason } = body;
+
+  if (!prompt) return res.status(400).json({ error: 'missing_fields', required: ['prompt'] });
+
+  const apiKey = extractApiKey(req);
+  if (!apiKey) return res.status(401).json({ error: 'missing_api_key' });
+
+  const proxyUrl = `http://127.0.0.1:${PORT}`;
+  const result = await ask.callTier('L3', { system, prompt, caller, maxTokens, jsonMode }, proxyUrl, apiKey);
+
+  ask.logCall({
+    caller, system, prompt, tier: 'L3',
+    response: result.content?.slice(0, 500),
+    confidence: result.confidence, ms: result.ms,
+    tokens_in: result.tokens?.in || 0, tokens_out: result.tokens?.out || 0,
+    escalated_from: body.escalated_from || null,
+    escalation_reason: escalation_reason || null,
+  });
+
+  res.json({ ...result, remaining_quota: limit.remaining });
+});
+
+app.get('/escalation/:ticketId', (req, res) => {
+  const data = escalation.getEscalation(req.params.ticketId);
+  if (!data) return res.status(404).json({ error: 'not_found' });
+  res.json(data);
+});
+
+app.get('/api/ask-stats', (req, res) => {
+  res.json(ask.getStats());
+});
+
+// ---------------------------------------------------------------------------
 // Dashboard routes
 // ---------------------------------------------------------------------------
 const dashboardApi = require('./dashboard/api');
