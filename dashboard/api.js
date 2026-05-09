@@ -42,6 +42,7 @@ router.get('/', (req, res) => {
       { method: 'GET', path: '/api/cache-stats', description: 'Response cache hit/miss stats' },
       { method: 'GET', path: '/api/sessions', description: 'Per-session cost analytics', params: ['range=1h|6h|12h|24h|7d|30d', 'limit=<n>'] },
       { method: 'GET', path: '/api/export', description: 'Download usage data as CSV', params: ['range=1h|6h|12h|24h|7d|30d'] },
+      { method: 'GET', path: '/api/db-stats', description: 'Database stats: row count, date range, total cost' },
       { method: 'POST', path: '/api/backfill-cache', description: 'Retroactively estimate cache tokens (localhost only)', params: ['body: {dryRun: true|false}'] },
     ],
   });
@@ -674,6 +675,37 @@ router.get('/export', (req, res) => {
     res.set('Content-Disposition', `attachment; filename="${filename}"`);
     res.set('X-Cache', 'BYPASS');
     res.send(lines.join('\n'));
+  } catch (err) {
+    res.status(500).json({ error: 'internal_error', message: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/db-stats
+// Database statistics: row count, date range, file size, models.
+// ---------------------------------------------------------------------------
+router.get('/db-stats', (req, res) => {
+  try {
+    const stats = db.query(`
+      SELECT COUNT(*) AS rows,
+             MIN(timestamp) AS oldest,
+             MAX(timestamp) AS newest,
+             COUNT(DISTINCT model) AS models,
+             COUNT(DISTINCT project) AS projects,
+             COUNT(DISTINCT session_id) AS sessions,
+             SUM(estimated_cost_usd) AS total_cost
+      FROM usage_log
+    `);
+    const row = stats[0] || {};
+    res.json({
+      rows: row.rows || 0,
+      oldest: row.oldest || null,
+      newest: row.newest || null,
+      models: row.models || 0,
+      projects: row.projects || 0,
+      sessions: row.sessions || 0,
+      total_cost: parseFloat((row.total_cost || 0).toFixed(2)),
+    });
   } catch (err) {
     res.status(500).json({ error: 'internal_error', message: err.message });
   }

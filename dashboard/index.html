@@ -334,6 +334,10 @@
   </div>
 </div>
 
+<footer style="padding:12px 24px;text-align:center;font-size:11px;color:var(--muted);border-top:1px solid var(--border)">
+  <span id="db-footer">—</span>
+</footer>
+
 <script>
 const COLORS = ['#58a6ff','#3fb950','#d29922','#f85149','#db6d28','#a371f7','#79c0ff','#56d364','#e3b341','#ff7b72'];
 
@@ -766,6 +770,20 @@ refreshAll();
 loadTrend();
 loadJudge();
 loadHealth();
+
+async function loadDbStats() {
+  try {
+    const r = await fetch('/api/db-stats');
+    if (!r.ok) return;
+    const d = await r.json();
+    const oldest = d.oldest ? new Date(d.oldest).toLocaleDateString() : '—';
+    const newest = d.newest ? new Date(d.newest).toLocaleDateString() : '—';
+    document.getElementById('db-footer').textContent =
+      `${d.rows.toLocaleString()} rows · ${d.models} models · ${d.projects} projects · ${d.sessions} sessions · ${fmtCost(d.total_cost)} total · ${oldest} – ${newest}`;
+  } catch {}
+}
+loadDbStats();
+
 setInterval(refreshAll, 60000);
 setInterval(loadTrend, 120000);
 setInterval(loadJudge, 60000);

@@ -751,6 +751,19 @@ describe('E2E: Token Proxy', { timeout: 30000 }, () => {
   // API index
   // =========================================================================
 
+  describe('/api/db-stats', () => {
+    it('returns database statistics', async () => {
+      const { status, json } = await req('GET', '/api/db-stats');
+      assert.equal(status, 200);
+      assert.ok(typeof json.rows === 'number');
+      assert.ok(json.rows > 0, 'should have rows from prior tests');
+      assert.ok(typeof json.total_cost === 'number');
+      assert.ok(typeof json.models === 'number');
+      assert.ok(json.oldest !== null);
+      assert.ok(json.newest !== null);
+    });
+  });
+
   describe('/api/', () => {
     it('returns self-documenting endpoint list', async () => {
       const { status, json } = await req('GET', '/api/');
