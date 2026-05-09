@@ -1,26 +1,22 @@
 # TODO
 
-## Session State (2026-05-09 16:15 CDT)
+## Session State (2026-05-09 16:48 CDT)
 
-**Windows fork** of `llm-token-proxy`. Published to `grobomo/llm-token-proxy` (public). All commits pushed through `a25aad2`.
+**Windows fork** of `llm-token-proxy`. Published to `grobomo/llm-token-proxy` (public). All commits pushed through `66c0461`.
 
-### Session handoff (context-reset)
+### Session handoff
 
-**What was done this session (2026-05-09 evening, 2 sub-sessions):**
-1. **T135: Cache backfill** — `POST /api/backfill-cache` endpoint. Retroactively estimated cache tokens for 64 historical RDSec calls. Cost jumped from $1.71 to $17.25 (10x more accurate). Localhost-only, dry-run by default. `db.run()`, `cache.clear()`, `scripts/backfill-cache-estimates.js`.
-2. **T136: Dashboard data quality** — Filter HTTP 400/500 calls from cost-breakdown and project-costs panels.
-3. **T137: Dashboard UX polish** — `fmtCost` $0.0001 format (was $0.01c). Flex bar sizing. XSS hardening (esc() for project names + error messages).
-4. **T138: Time range selector** — Dashboard dropdown (1h/6h/12h/24h/7d/30d). All dashboard API endpoints accept `?range=` param. Panel headers update dynamically.
-5. **Test & docs** — 41 tests pass. README updated with dashboard docs, backfill endpoint, new files table.
-
-**All changes synced to WSL** git repo at `/home/ubu/Documents/ProjectsCL1/_grobomo/llm-token-proxy`. Proxy restarted and verified.
+**What was done this session:**
+1. **T139: Dynamic range labels** — Added `range-label` class to Cost optimization and Judge decisions headers so they update with the range selector.
+2. **T141: Dashboard API tests** — 19 new e2e tests covering all dashboard endpoints: `/api/usage` (inc. validation), `/api/budget`, `/api/summary`, `/api/hourly`, `/api/top-operations`, `/api/cache-estimation`, `/api/hourly-breakdown`, `/api/cost-breakdown`, `/api/project-costs`, `/api/savings-potential`, `/api/daily-comparison`, `/api/cache-stats`. Total: 60 tests (was 41).
+3. **T142: Cache estimator data quality fix** — Single-turn /ask and /judge calls were getting 60K cache_write tokens estimated (no session_id → treated as first-in-session). Now skips estimation when no session_id. Fixes 480K phantom cache_write on haiku.
+4. All changes synced to WSL. Proxy restarted via systemd.
 
 ### Next session priorities
 - [ ] T133: Fix blueprint-extra sharp module — TODO written in blueprint-extra-mcp/TODO.md (cross-project)
 - [ ] T130: Cost source-of-truth — needs Langfuse/Power BI (blocked by T133)
 - [ ] T129: Extract per-user Opus cost from RDSec (blocked by T133)
 - [ ] T111: Pluggable storage backend (Postgres) for multi-host deployments
-- [ ] T139: Dashboard — add "Cost optimization — session restarts" header to dynamic range labels
 - [ ] T140: Consider daily/weekly email digest using dashboard data + range API
 
 ---
