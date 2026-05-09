@@ -337,6 +337,8 @@ function buildModelColorMap(hours) {
   return map;
 }
 
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
 function fmtCost(usd) {
   if (!usd || usd === 0) return '$0';
   if (usd < 0.01) return `$${usd.toFixed(4)}`;
@@ -440,7 +442,7 @@ async function load() {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     renderChart(await r.json());
   } catch (err) {
-    document.getElementById('chart').innerHTML = `<div class="empty-state">Error: ${err.message}</div>`;
+    document.getElementById('chart').innerHTML = `<div class="empty-state">Error: ${esc(err.message)}</div>`;
   }
 }
 
@@ -498,7 +500,7 @@ async function loadBreakdown() {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     renderBreakdown(await r.json());
   } catch (err) {
-    document.getElementById('model-breakdown').innerHTML = `<div class="empty-state">${err.message}</div>`;
+    document.getElementById('model-breakdown').innerHTML = `<div class="empty-state">${esc(err.message)}</div>`;
   }
 }
 
@@ -545,7 +547,7 @@ async function loadSavings() {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     renderSavings(await r.json());
   } catch (err) {
-    document.getElementById('savings-panel').innerHTML = `<div class="empty-state">${err.message}</div>`;
+    document.getElementById('savings-panel').innerHTML = `<div class="empty-state">${esc(err.message)}</div>`;
   }
 }
 
@@ -597,7 +599,7 @@ async function loadHealth() {
     tsEl.textContent = 'checked ' + new Date().toLocaleTimeString();
   } catch (err) {
     lastHealthCheck = Date.now();
-    upstreamsEl.innerHTML = `<div class="health-item" title="${err.message}"><div class="health-dot down"></div><span class="health-label">API upstreams</span><span class="health-status down">check failed</span></div>`;
+    upstreamsEl.innerHTML = `<div class="health-item" title="${esc(err.message)}"><div class="health-dot down"></div><span class="health-label">API upstreams</span><span class="health-status down">check failed</span></div>`;
     tsEl.textContent = 'error ' + new Date().toLocaleTimeString();
     staleEl.style.display = 'none';
   }
@@ -671,7 +673,7 @@ async function loadProjectCosts() {
       const name = p.project.replace(/^.*[/\\]/, '');  // show just dir name
       return `
         <div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px">
-          <span style="width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.project}">${name}</span>
+          <span style="width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(p.project)}">${esc(name)}</span>
           <div style="flex:1;height:14px;background:var(--border);border-radius:3px;overflow:hidden">
             <div style="width:${pct}%;height:100%;background:${COLORS[i % COLORS.length]};border-radius:3px"></div>
           </div>
