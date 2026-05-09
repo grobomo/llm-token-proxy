@@ -108,10 +108,22 @@ The proxy exposes tiered `/ask` and `/judge` endpoints for internal tooling (hoo
 
 Full API docs: [`docs/api-reference.md`](./docs/api-reference.md) | Escalation flow: [`docs/escalation-flow.md`](./docs/escalation-flow.md)
 
+## Cache cost estimation
+
+LiteLLM gateways (RDSec, etc.) strip `cache_creation_input_tokens` and `cache_read_input_tokens` from responses — reporting only non-cached input. This makes cache costs invisible (~$2-4/session for Opus).
+
+The proxy detects this and applies heuristic estimation:
+- **First call in a session:** estimates 60K cache_write tokens (system prompt being cached)
+- **Subsequent calls:** estimates 200K cache_read tokens (system prompt read from cache)
+- Only activates for Claude models on non-Anthropic upstreams with successful responses
+- Tagged with `cache_estimated=1` in the DB so dashboard shows an `est` badge
+
+The `/api/cache-estimation` endpoint shows actual vs estimated breakdown. The dashboard's Cache Economics panel reflects this data.
+
 ## Testing
 
 ```bash
-npm test          # 25 e2e tests — boots mock upstream + real proxy, hits all endpoints
+npm test          # 40 tests — 13 cache-estimator unit + 27 e2e (mock upstream + real proxy)
 ```
 
 ## Known limitations / TODO
