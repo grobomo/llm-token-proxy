@@ -79,27 +79,26 @@
     }
     .bar-wrap:hover .bar { background: var(--text); }
     .bar-wrap .hour-label {
-      font-size: 10px;
+      font-size: 13px;
+      font-weight: 500;
       color: var(--muted);
-      margin-top: 6px;
+      margin-top: 8px;
       white-space: nowrap;
     }
 
     .tooltip {
       display: none;
-      position: absolute;
-      bottom: calc(100% + 12px);
-      left: 50%;
-      transform: translateX(-50%);
+      position: fixed;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 8px;
       padding: 14px;
       min-width: 200px;
+      max-width: 280px;
       z-index: 100;
       box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      pointer-events: none;
     }
-    .bar-wrap:hover .tooltip { display: block; }
     .tooltip h3 {
       font-size: 13px;
       font-weight: 600;
@@ -269,10 +268,16 @@ function renderChart(data) {
   const totalCalls = hours.reduce((s, h) => s + h.total_calls, 0);
   document.getElementById('total-label').textContent = `${fmtCost(totalCost)} total — ${totalCalls} calls`;
 
+  // Convert UTC hour to CDT (UTC-5)
+  function utcToCdt(utcHour) { return (utcHour - 5 + 24) % 24; }
+  function fmtHour(h) { const hr12 = h % 12 || 12; return `${hr12}${h < 12 ? 'a' : 'p'}`; }
+
   chart.innerHTML = hours.map(h => {
     const pct = Math.max(1, (h.total_cost / maxCost) * 100);
-    const hourStr = h.hour.slice(11, 13) + ':00';
-    const nextHour = String((parseInt(h.hour.slice(11, 13)) + 1) % 24).padStart(2, '0') + ':00';
+    const utcH = parseInt(h.hour.slice(11, 13));
+    const cdtH = utcToCdt(utcH);
+    const cdtLabel = fmtHour(cdtH);
+    const cdtNext = fmtHour((cdtH + 1) % 24);
     const color = h.total_cost > maxCost * 0.7 ? 'var(--red)' : h.total_cost > maxCost * 0.4 ? 'var(--yellow)' : 'var(--accent)';
 
     const pieGradient = buildPieGradient(h.projects);
@@ -285,9 +290,9 @@ function renderChart(data) {
     `).join('');
 
     return `
-      <div class="bar-wrap">
+      <div class="bar-wrap" data-tooltip-content="${cdtLabel}–${cdtNext} CDT | ${fmtCost(h.total_cost)}">
         <div class="tooltip">
-          <h3>${hourStr} – ${nextHour}</h3>
+          <h3>${cdtLabel}–${cdtNext} CDT</h3>
           <div class="cost-total">${fmtCost(h.total_cost)}</div>
           <div class="pie-wrap">
             <div class="pie" style="background:${pieGradient}"></div>
@@ -295,10 +300,28 @@ function renderChart(data) {
           </div>
         </div>
         <div class="bar" style="height:${pct}%;background:${color}"></div>
-        <span class="hour-label">${hourStr}</span>
+        <span class="hour-label">${cdtLabel}</span>
       </div>
     `;
   }).join('');
+
+  // Position tooltips on hover (fixed positioning avoids clipping)
+  chart.querySelectorAll('.bar-wrap').forEach(wrap => {
+    const tip = wrap.querySelector('.tooltip');
+    wrap.addEventListener('mouseenter', (e) => {
+      const rect = wrap.getBoundingClientRect();
+      tip.style.display = 'block';
+      const tipRect = tip.getBoundingClientRect();
+      let left = rect.left + rect.width / 2 - tipRect.width / 2;
+      let top = rect.top - tipRect.height - 8;
+      if (left < 8) left = 8;
+      if (left + tipRect.width > window.innerWidth - 8) left = window.innerWidth - tipRect.width - 8;
+      if (top < 8) top = rect.bottom + 8;
+      tip.style.left = left + 'px';
+      tip.style.top = top + 'px';
+    });
+    wrap.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+  });
 }
 
 async function load() {
