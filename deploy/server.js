@@ -230,19 +230,20 @@ app.get('/admin/access-log', (req, res) => {
   const knownIps = audit.getKnownIps();
 
   if (req.query.format === 'html') {
+    const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     const rows = entries.map(e => `
       <tr style="border-bottom:1px solid #30363d${e.first_seen ? ';background:#1a2332' : ''}">
-        <td>${e.timestamp}</td>
-        <td>${e.ip}</td>
-        <td>${e.path}</td>
-        <td>${e.user_agent?.slice(0, 60) || ''}</td>
+        <td>${esc(e.timestamp)}</td>
+        <td>${esc(e.ip)}</td>
+        <td>${esc(e.path)}</td>
+        <td>${esc((e.user_agent || '').slice(0, 60))}</td>
         <td>${e.auth_success ? 'OK' : 'FAIL'}</td>
         <td>${e.first_seen ? 'NEW' : ''}</td>
       </tr>
     `).join('');
 
     const ipRows = knownIps.map(k => `
-      <tr><td>${k.ip}</td><td>${k.first_seen_at}</td><td>${k.last_seen_at || '-'}</td><td>${k.access_count}</td><td>${k.label || ''}</td></tr>
+      <tr><td>${esc(k.ip)}</td><td>${esc(k.first_seen_at)}</td><td>${esc(k.last_seen_at || '-')}</td><td>${k.access_count}</td><td>${esc(k.label || '')}</td></tr>
     `).join('');
 
     return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Access Audit</title>
