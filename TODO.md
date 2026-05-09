@@ -1,8 +1,8 @@
 # TODO
 
-## Session State (2026-05-09 17:21 CDT)
+## Session State (2026-05-09 17:40 CDT)
 
-**Windows fork** of `llm-token-proxy`. Published to `grobomo/llm-token-proxy` (public). All commits pushed through `fee7ade`.
+**Windows fork** of `llm-token-proxy`. Published to `grobomo/llm-token-proxy` (public). All commits pushed through `74e1f36`.
 
 ### Session handoff
 
@@ -13,8 +13,10 @@
 4. **T148: API index** — `GET /api/` returns self-documenting endpoint list with descriptions and params.
 5. **T149: Session analytics** — `GET /api/sessions` groups by session_id with cost, call count, duration, models. Dashboard panel added.
 6. **Fix: shortModel() rendering** — T143's XSS fix double-escaped model names. Fixed by moving esc() inside shortModel().
-7. Tests: 60 → 64. CI green (both Tests + Secret Scan).
-8. All changes synced to WSL. Proxy restarted. Dashboard visually verified.
+7. **Deploy server update** — Added missing API endpoints (project-costs, sessions, judge-stats, cache-estimation, favicon) so tokentracker.click dashboard panels render data.
+8. **XSS fix in deploy admin** — Escaped path, user agent, IP, label in access log HTML view.
+9. **API reference docs** — Added Dashboard API section covering all new endpoints.
+10. Tests: 60 → 64. CI green. All synced to WSL. Proxy restarted. Dashboard visually verified.
 
 ### Next session priorities
 - [ ] T133: Fix blueprint-extra sharp module — TODO written in blueprint-extra-mcp/TODO.md (cross-project)
