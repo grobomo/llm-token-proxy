@@ -57,15 +57,7 @@ All systemd timers active: spike-detect (30min), watchdog (5min), daily-report (
 
 ## Medium (API Retry Integration)
 
-- [ ] T117: Bundle api_check.py with token proxy for auto-run + client diagnostics.
-  - **Goal**: When proxy restarts or upstream goes down, clients can query the proxy to troubleshoot.
-  - **What exists**: `context-reset/api_check.py` has `diagnose()` which queries `localhost:4100/health` and distinguishes proxy_down vs upstream_down vs both_down.
-  - **Changes needed**:
-    1. Copy/vendor `api_check.py` into this project (or pip-install from context-reset)
-    2. Auto-start watcher (`api_check.py --watch`) when proxy starts (systemd or child process)
-    3. Add `/diagnose` endpoint to proxy.js that runs the two-layer check and returns `{cause, proxy, upstream, detail}` JSON — clients call this instead of guessing
-    4. Watchdog timer (already exists at 5min) could restart proxy on crash and trigger api_check watcher
-  - **Client usage**: When Claude Code gets an API error, the stop hook calls `curl localhost:4100/diagnose` to determine if proxy needs restart vs wait for Anthropic
+- [x] T117: Client diagnostics via `/diagnose` endpoint. Checks all upstreams individually, returns per-upstream status + actionable recommendation. Stop rule `14-api-error-diagnose` prompts model to call it on API errors. Watchdog already runs every 5 min. No need to bundle api_check.py — proxy IS the diagnostic layer.
 
 ## Low / Backlog
 
