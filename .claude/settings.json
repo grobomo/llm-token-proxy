@@ -1,0 +1,11 @@
+{
+  "env": {
+    "ANTHROPIC_CUSTOM_HEADERS": "X-Project: llm-token-proxy"
+  },
+  "workflows": {
+    "disabled": [
+      "gsd",
+      "shtd"
+    ]
+  }
+}
