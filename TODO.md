@@ -66,4 +66,4 @@ All systemd timers active: spike-detect (30min), watchdog (5min), daily-report (
 - [ ] T111: Pluggable storage backend (Postgres) for multi-host deployments.
 - [x] T112: Pluggable alerting (Slack, webhook, email) — `lib/alert.js` implements log/slack/webhook. Wired into spike-detect.js. Config: `alerting.slack_webhook` + `alerting.webhook_url`. Set env vars or config.yaml to activate.
 - [ ] T113: Consider replacing custom proxy.js with LiteLLM proxy (same tech RDsec runs upstream). Battle-tested streaming/compression. Keep if per-project attribution is preserved.
-- [ ] T116: Custom domain `tokentracker.click` — registered via Route53, A record created → 54.160.207.89. **Pending**: DNS propagation + Let's Encrypt cert (`deploy/setup-https.sh`). Static IP attached. Port 443 open. Server has HTTPS code ready.
+- [x] T116: Custom domain `tokentracker.click` — LIVE with HTTPS. Cert expires 2026-08-07 (auto-renews). Login: password-only → `proxy1`. Admin: `admin`/`4dm1n!`.
