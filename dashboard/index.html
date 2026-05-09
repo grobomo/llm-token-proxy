@@ -78,14 +78,19 @@
       .chart { gap: 1px; min-height: 200px; }
       .bar-wrap { min-width: 28px; }
     }
-    .bar {
+    .bar-stack {
       width: 100%;
       border-radius: 3px 3px 0 0;
-      background: var(--accent);
-      transition: background 0.15s;
+      overflow: hidden;
       min-height: 2px;
+      display: flex;
+      flex-direction: column-reverse;
     }
-    .bar-wrap:hover .bar { background: var(--text); }
+    .bar-segment {
+      width: 100%;
+      transition: opacity 0.15s;
+    }
+    .bar-wrap:hover .bar-stack { opacity: 0.85; }
     .bar-wrap .hour-label {
       font-size: 11px;
       font-weight: 500;
@@ -246,6 +251,24 @@
 <script>
 const COLORS = ['#58a6ff','#3fb950','#d29922','#f85149','#db6d28','#a371f7','#79c0ff','#56d364','#e3b341','#ff7b72'];
 
+function shortModel(name) {
+  return name.replace(/^claude-/, '').replace(/-20\d{6}$/, '');
+}
+
+// Stable model→color map built from full dataset
+function buildModelColorMap(hours) {
+  const totals = {};
+  for (const h of hours) {
+    for (const m of (h.models || [])) {
+      totals[m.model] = (totals[m.model] || 0) + m.cost;
+    }
+  }
+  const sorted = Object.keys(totals).sort((a, b) => totals[b] - totals[a]);
+  const map = {};
+  sorted.forEach((model, i) => { map[model] = COLORS[i % COLORS.length]; });
+  return map;
+}
+
 function fmtCost(usd) {
   if (!usd || usd === 0) return '$0';
   if (usd < 0.01) return `$${(usd * 100).toFixed(2)}c`;
@@ -253,20 +276,6 @@ function fmtCost(usd) {
   return `$${usd.toFixed(2)}`;
 }
 
-function buildPieGradient(projects) {
-  if (!projects || projects.length === 0) return 'var(--border)';
-  const total = projects.reduce((s, p) => s + p.cost, 0);
-  if (total === 0) return 'var(--border)';
-  let angle = 0;
-  const stops = [];
-  projects.forEach((p, i) => {
-    const pct = (p.cost / total) * 360;
-    const color = COLORS[i % COLORS.length];
-    stops.push(`${color} ${angle}deg ${angle + pct}deg`);
-    angle += pct;
-  });
-  return `conic-gradient(${stops.join(', ')})`;
-}
 
 function renderChart(data) {
   const chart = document.getElementById('chart');
@@ -277,43 +286,44 @@ function renderChart(data) {
     return;
   }
 
+  const modelColors = buildModelColorMap(hours);
   const maxCost = Math.max(...hours.map(h => h.total_cost), 0.01);
   const totalCost = hours.reduce((s, h) => s + h.total_cost, 0);
   const totalCalls = hours.reduce((s, h) => s + h.total_calls, 0);
   document.getElementById('total-label').textContent = `${fmtCost(totalCost)} total — ${totalCalls} calls`;
 
-  // Convert UTC hour to CDT (UTC-5)
   function utcToCdt(utcHour) { return (utcHour - 5 + 24) % 24; }
   function fmtHour(h) { const hr12 = h % 12 || 12; return `${hr12}:00${h < 12 ? 'a' : 'p'}`; }
 
   chart.innerHTML = hours.map(h => {
-    const pct = Math.max(1, (h.total_cost / maxCost) * 100);
+    const barPct = Math.max(1, (h.total_cost / maxCost) * 100);
     const utcH = parseInt(h.hour.slice(11, 13));
     const cdtH = utcToCdt(utcH);
     const cdtLabel = fmtHour(cdtH);
     const cdtNext = fmtHour((cdtH + 1) % 24);
-    const color = h.total_cost > maxCost * 0.7 ? 'var(--red)' : h.total_cost > maxCost * 0.4 ? 'var(--yellow)' : 'var(--accent)';
 
-    const pieGradient = buildPieGradient(h.projects);
-    const legend = h.projects.slice(0, 6).map((p, i) => `
+    const models = (h.models || []).sort((a, b) => b.cost - a.cost);
+    const segments = models.map(m => {
+      const segPct = h.total_cost > 0 ? (m.cost / h.total_cost) * 100 : 0;
+      return `<div class="bar-segment" style="height:${segPct}%;background:${modelColors[m.model] || 'var(--accent)'}"></div>`;
+    }).join('');
+
+    const legend = models.slice(0, 6).map(m => `
       <div class="legend-item">
-        <div class="legend-dot" style="background:${COLORS[i % COLORS.length]}"></div>
-        <span>${p.project}</span>
-        <span class="legend-cost">${fmtCost(p.cost)}</span>
+        <div class="legend-dot" style="background:${modelColors[m.model] || 'var(--accent)'}"></div>
+        <span>${shortModel(m.model)}</span>
+        <span class="legend-cost">${fmtCost(m.cost)}</span>
       </div>
     `).join('');
 
     return `
-      <div class="bar-wrap" data-tooltip-content="${cdtLabel}–${cdtNext} CDT | ${fmtCost(h.total_cost)}">
+      <div class="bar-wrap">
         <div class="tooltip">
           <h3>${cdtLabel}–${cdtNext} CDT</h3>
           <div class="cost-total">${fmtCost(h.total_cost)}</div>
-          <div class="pie-wrap">
-            <div class="pie" style="background:${pieGradient}"></div>
-            <div class="legend">${legend}</div>
-          </div>
+          <div class="legend">${legend}</div>
         </div>
-        <div class="bar" style="height:${pct}%;background:${color}"></div>
+        <div class="bar-stack" style="height:${barPct}%">${segments}</div>
         <span class="hour-label">${cdtLabel}</span>
       </div>
     `;
@@ -356,10 +366,6 @@ async function load() {
   } catch (err) {
     document.getElementById('chart').innerHTML = `<div class="empty-state">Error: ${err.message}</div>`;
   }
-}
-
-function shortModel(name) {
-  return name.replace(/^claude-/, '').replace(/-20\d{6}$/, '');
 }
 
 function fmtTokens(n) {

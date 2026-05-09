@@ -173,11 +173,11 @@ router.get('/top-operations', (req, res) => {
 
 // ---------------------------------------------------------------------------
 // GET /api/hourly-breakdown
-// Last 24 hours grouped by hour + project breakdown per hour.
+// Last 24 hours grouped by hour with model + project breakdown per hour.
 // ---------------------------------------------------------------------------
 router.get('/hourly-breakdown', (req, res) => {
   try {
-    const rows = db.query(`
+    const projectRows = db.query(`
       SELECT
         strftime('%Y-%m-%dT%H', timestamp) AS hour,
         COALESCE(project, '(untagged)') AS project,
@@ -189,12 +189,28 @@ router.get('/hourly-breakdown', (req, res) => {
       ORDER BY hour, cost DESC
     `);
 
+    const modelRows = db.query(`
+      SELECT
+        strftime('%Y-%m-%dT%H', timestamp) AS hour,
+        model,
+        SUM(estimated_cost_usd) AS cost,
+        COUNT(*) AS calls
+      FROM usage_log
+      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+      GROUP BY hour, model
+      ORDER BY hour, cost DESC
+    `);
+
     const hourMap = {};
-    for (const r of rows) {
-      if (!hourMap[r.hour]) hourMap[r.hour] = { hour: r.hour, total_cost: 0, total_calls: 0, projects: [] };
+    for (const r of projectRows) {
+      if (!hourMap[r.hour]) hourMap[r.hour] = { hour: r.hour, total_cost: 0, total_calls: 0, projects: [], models: [] };
       hourMap[r.hour].total_cost += r.cost || 0;
       hourMap[r.hour].total_calls += r.calls || 0;
       hourMap[r.hour].projects.push({ project: r.project, cost: parseFloat((r.cost || 0).toFixed(4)), calls: r.calls });
+    }
+    for (const r of modelRows) {
+      if (!hourMap[r.hour]) hourMap[r.hour] = { hour: r.hour, total_cost: 0, total_calls: 0, projects: [], models: [] };
+      hourMap[r.hour].models.push({ model: r.model, cost: parseFloat((r.cost || 0).toFixed(4)), calls: r.calls });
     }
 
     res.json({ hours: Object.values(hourMap) });

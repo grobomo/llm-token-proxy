@@ -26,3 +26,4 @@ data/
 # Local logs / runtime artifacts
 *.log
 .token-proxy-*
+SESSION_STATE.md
