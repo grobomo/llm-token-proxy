@@ -44,7 +44,7 @@ All systemd timers active: spike-detect (30min), watchdog (5min), daily-report (
 - [x] T105: Cost-report reconciliation script. `scripts/reconcile-costs.js` — accepts `--report <file>` or `--api` with `ANTHROPIC_ADMIN_KEY`. Commit f73bd84.
 - [x] T106: Data-driven consumer enforcement. `scripts/enforce-routing.js` — flags high cache_write consumers, untagged projects, unknown consumers. Commit 6177ae0. Key finding: upstream (anthropic vs rdsec) does NOT affect cost — same model = same price. Primary cost driver is cache_write volume per session start ($18.75/M).
 - [x] T107: Dashboard: spike chart + top-N expensive operations. Commit ed48545. Hourly spend bar chart + top 8 costly calls table. Per-project leaderboard already existed from initial dashboard.
-- [ ] T108: Publish.json multi-account support — allow pushing to both grobomo (public) and tmemu (private backup). **Blocked**: pending grobomo/openclaw setup + tmemu scope audit.
+- [x] T108: Publish.json multi-account support. `gh_auto push-all` iterates `targets[]` array in publish.json, auto-creates remotes, pushes with per-account tokens. This repo configured for grobomo (public) + tmemu (private backup). Commit c38f94f.
 
 ## Medium (New)
 
