@@ -79,6 +79,13 @@ log:
 #     replace_model: "claude-4.5-haiku-aws"
 #     enabled: true
 
+# --- Data retention ---
+# Purge old usage data to keep the DB manageable.
+# CLI: node scripts/data-retention.js --days 90 --execute
+# API: POST /api/purge (localhost only, dry-run by default)
+# retention:
+#   days: 90                 # delete rows older than this
+
 # --- Per-project attribution (T102) ---
 # Claude Code sends X-Project and X-Claude-Code-Session-Id headers when configured.
 # Add to each project's .claude/settings.json:
