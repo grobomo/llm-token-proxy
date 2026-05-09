@@ -2,7 +2,7 @@
 
 ## Session State (2026-05-09 17:00 CDT)
 
-**Windows fork** of `llm-token-proxy`. Published to `grobomo/llm-token-proxy` (public). All commits pushed through `d8568e2`.
+**Windows fork** of `llm-token-proxy`. Published to `grobomo/llm-token-proxy` (public). All commits pushed through `478fb73`.
 
 ### Session handoff
 
@@ -12,7 +12,8 @@
 3. **T142: Cache estimator data quality fix** — Single-turn /ask and /judge calls were getting 60K cache_write tokens estimated (no session_id → treated as first-in-session). Now skips estimation when no session_id. Fixes 480K phantom cache_write on haiku.
 4. **T143: XSS hardening pass** — Escaped gate names, judge decisions/reasons, and model names in dashboard innerHTML. All user-derived strings now go through `esc()`.
 5. **T144: package.json engines fix** — Changed `>=18.0.0` to `>=22.5.0` (node:sqlite DatabaseSync requires 22.5+). README updated with cache estimator session_id docs.
-6. All changes synced to WSL. Proxy restarted via systemd.
+6. **CI workflow** — Added `.github/workflows/test.yml` (Node 22, npm test). Both CI jobs (tests + secret scan) pass.
+7. All changes synced to WSL. Proxy restarted via systemd. CI verified green.
 
 ### Next session priorities
 - [ ] T133: Fix blueprint-extra sharp module — TODO written in blueprint-extra-mcp/TODO.md (cross-project)
