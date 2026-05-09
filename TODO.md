@@ -1,27 +1,29 @@
 # TODO
 
-## Session State (2026-05-09 14:35 CDT)
+## Session State (2026-05-09 15:30 CDT)
 
-**This is the Windows fork** of `llm-token-proxy` from WSL. Forked via zip backup, fresh git repo for grobomo. Initial commit `8a5930d`. 27/27 tests pass.
-
-WSL original at `/home/ubu/Documents/ProjectsCL1/_grobomo/llm-token-proxy` is untouched.
-Backup zip at `backups/llm-token-proxy.zip`. Original git history at `archive/.git-wsl-original`.
+**Windows fork** of `llm-token-proxy`. Published to `grobomo/llm-token-proxy` (public). All commits pushed through `55e6fbc`.
 
 ### Session handoff (context-reset)
 
-**What was done this session:**
-1. Fixed WSL Claude 401 auth loop — deleted stale `~/.claude/.credentials.json` (expired enterprise OAuth taking priority over API key)
-2. Fixed Windows Terminal Ubuntu profile — set font size 19, hidden duplicate Canonical profile
-3. Forked llm-token-proxy from WSL → Windows, init fresh grobomo git repo
-4. **BUG FIX: safe-restart.sh** — added pre-flight check for config.yaml (refuses to restart without it), retry logic (2 retries instead of immediate give-up), journalctl error logging on failure
-5. **BUG FIX: watchdog.sh (deployed at ~/.openclaw/workspace/)** — patched to NOT remove `ANTHROPIC_BASE_URL` on proxy failure. Root cause of the 401 auth loop: watchdog killed proxy config, no valid direct Anthropic path exists for RDSec JWT auth
-6. Restored config.yaml to WSL git repo (was missing, copied from workspace), proxy restarted successfully
-7. Investigated cost discrepancy — RDSec responses omit `cache_creation_input_tokens` and `cache_read_input_tokens` (always 0). Proxy calculates correctly from what it sees but underestimates RDSec cost by the entire cache component (~$2.25/session start)
-8. Got RDSec portal data: $13K/30d org-wide, daily chart extracted. Most traces are Haiku/Sonnet not Opus (cost math confirms)
+**What was done this session (2026-05-09 afternoon):**
+1. **T131: safe-restart.sh sync** — copied fixed version (pre-flight + retry) to both WSL git repo and deployed location at `~/.openclaw/workspace/token-proxy/scripts/`
+2. **T132: Cache cost estimation** — Major feature. `lib/cache-estimator.js`:
+   - Production data analysis: RDSec returns `prompt_tokens` as non-cached only (`input_tokens=1` for all Opus). Cache tokens completely invisible.
+   - Heuristic: for non-Anthropic upstreams with Claude models, estimates cache_write (60K, first call) or cache_read (200K, subsequent)
+   - Schema v6: `cache_estimated` column on usage_log
+   - `/api/cache-estimation` endpoint for dashboard
+   - Fixed pre-existing bug: non-streaming path missing OpenAI→Anthropic field normalization (`prompt_tokens`→`input_tokens`)
+   - SQL injection hardening: sessionId sanitized to UUID chars only
+   - 13 unit tests + 27 e2e = 40 total pass
+   - Deployed to WSL, verified live: dashboard shows estimated cache data with `est` badge
+3. **T134: Dashboard UX** — added per-project cost breakdown panel (`/api/project-costs`), horizontal bar chart, top 10 projects
+4. **Git merge** — merged remote origin (WSL-era commits) into Windows fork, resolved all conflicts keeping Windows as authoritative
+5. **README updated** — documented cache estimation feature, bumped test count
 
-**Blueprint MCP sharp module is broken** — `browser_take_screenshot` fails on Windows. Use `browser_evaluate` + canvas.toDataURL workaround for charts, or Playwright for non-SSO pages.
+**All changes synced to WSL** — both git repo and deployed proxy at `~/.openclaw/workspace/token-proxy/`. Proxy restarted and verified via safe-restart.sh after each deployment.
 
-**safe-restart.sh fix is only in this Windows fork** — needs to be synced back to WSL project. The deployed version at `~/.openclaw/workspace/token-proxy/scripts/` still has the old version.
+**Blueprint MCP sharp module still broken** — TODO written in `blueprint-extra-mcp/TODO.md`.
 
 ### Next session priorities
 - [x] T131: Sync safe-restart.sh fix back to WSL project (pre-flight + retry logic) — synced to both git repo and deployed location
