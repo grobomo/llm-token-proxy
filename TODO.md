@@ -11,7 +11,7 @@ Daily cron/timers: spike-detect (30min), daily-report (23:47), onedrive-sync (23
 
 ### Next session priorities
 - [ ] T107: Dashboard spike chart + per-project leaderboard (unblocked, per-project data accumulating)
-- [ ] Split stop-analysis-rules.yaml into numbered files (03-suggest-context-reset.yaml etc)
+- [x] Split stop-analysis-rules.yaml into numbered files (~/.claude/proxy/stop-rules/01-*.yaml through 99-*)
 - [ ] Verify per-project X-Project headers are populating in usage.db after overnight accumulation
 
 ### Completed this session (not in code — system config)
