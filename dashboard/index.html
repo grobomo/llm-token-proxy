@@ -286,6 +286,7 @@
     <span class="health-status up">running</span>
   </div>
   <div id="health-upstreams"></div>
+  <span class="health-ts" id="health-uptime" style="font-size:11px;color:var(--muted)"></span>
   <span class="health-ts" id="health-ts"></span>
   <span class="health-ts" id="health-stale" style="display:none;color:var(--yellow)">stale</span>
 </div>
@@ -625,6 +626,16 @@ async function loadHealth() {
     }).join('');
     upstreamsEl.innerHTML = upstreamHtml;
     tsEl.textContent = 'checked ' + new Date().toLocaleTimeString();
+
+    // Fetch uptime stats
+    try {
+      const ur = await fetch('/api/uptime');
+      const u = await ur.json();
+      const uptimeEl = document.getElementById('health-uptime');
+      const rate = u.last_24h?.success_rate ?? 100;
+      const rateColor = rate >= 99 ? 'var(--green)' : rate >= 95 ? 'var(--yellow)' : 'var(--red)';
+      uptimeEl.innerHTML = `up ${esc(u.uptime_human)} · ${u.requests_this_session} reqs · <span style="color:${rateColor}">${rate}% ok</span>`;
+    } catch {}
   } catch (err) {
     lastHealthCheck = Date.now();
     upstreamsEl.innerHTML = `<div class="health-item" title="${esc(err.message)}"><div class="health-dot down"></div><span class="health-label">API upstreams</span><span class="health-status down">check failed</span></div>`;

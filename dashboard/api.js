@@ -83,13 +83,15 @@ router.get('/uptime', (req, res) => {
     const errRows = db.query(`SELECT COUNT(*) AS cnt FROM usage_log WHERE http_status >= 500`);
     const last24h = db.query(`
       SELECT COUNT(*) AS total,
-             SUM(CASE WHEN http_status >= 500 THEN 1 ELSE 0 END) AS errors,
+             SUM(CASE WHEN http_status >= 500 THEN 1 ELSE 0 END) AS errors_5xx,
+             SUM(CASE WHEN http_status BETWEEN 400 AND 499 THEN 1 ELSE 0 END) AS errors_4xx,
              SUM(CASE WHEN http_status BETWEEN 200 AND 299 THEN 1 ELSE 0 END) AS success
       FROM usage_log
       WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
     `);
     const l = last24h[0] || {};
-    const successRate = l.total > 0 ? ((l.success || 0) / l.total * 100) : 100;
+    const proxied = (l.success || 0) + (l.errors_5xx || 0);
+    const successRate = proxied > 0 ? ((l.success || 0) / proxied * 100) : 100;
 
     dbStats = {
       first_request: firstRow[0]?.timestamp || null,
@@ -97,8 +99,10 @@ router.get('/uptime', (req, res) => {
       total_5xx: errRows[0]?.cnt || 0,
       last_24h: {
         requests: l.total || 0,
+        proxied: proxied,
         success: l.success || 0,
-        errors_5xx: l.errors || 0,
+        errors_5xx: l.errors_5xx || 0,
+        errors_4xx: l.errors_4xx || 0,
         success_rate: parseFloat(successRate.toFixed(2)),
       },
     };
