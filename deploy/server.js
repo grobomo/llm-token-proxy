@@ -34,7 +34,8 @@ app.post('/auth/login', (req, res) => {
   if (result) {
     const cookieName = 'dash_session';
     const maxAge = parseInt(process.env.SESSION_TTL_HOURS || '24') * 3600;
-    res.set('Set-Cookie', `${cookieName}=${result.id}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}`);
+    const secure = req.secure || req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+    res.set('Set-Cookie', `${cookieName}=${result.id}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure}`);
     return res.json({ ok: true, role: result.role });
   }
   return res.status(401).json({ ok: false });
@@ -215,6 +216,29 @@ app.get('/api/judge-stats', (req, res) => {
   res.json({ by_gate: [], recent: [] });
 });
 
+app.get('/api/db-stats', (req, res) => {
+  const stats = query(`
+    SELECT COUNT(*) AS rows,
+           MIN(timestamp) AS oldest,
+           MAX(timestamp) AS newest,
+           COUNT(DISTINCT model) AS models,
+           COUNT(DISTINCT project) AS projects,
+           COUNT(DISTINCT session_id) AS sessions,
+           SUM(estimated_cost_usd) AS total_cost
+    FROM usage_log
+  `);
+  const s = stats[0] || {};
+  res.json({
+    rows: s.rows || 0,
+    oldest: s.oldest || null,
+    newest: s.newest || null,
+    models: s.models || 0,
+    projects: s.projects || 0,
+    sessions: s.sessions || 0,
+    total_cost: parseFloat((s.total_cost || 0).toFixed(2)),
+  });
+});
+
 app.get('/api/cache-estimation', (req, res) => {
   const interval = parseRange(req);
   const stats = query(`
@@ -264,6 +288,7 @@ app.get('/api/', (req, res) => {
       { method: 'GET', path: '/api/sessions', description: 'Per-session cost analytics', params: ['range=1h|6h|12h|24h|7d|30d', 'limit=<n>'] },
       { method: 'GET', path: '/api/cache-estimation', description: 'Cache estimation stats', params: ['range=1h|6h|12h|24h|7d|30d'] },
       { method: 'GET', path: '/api/judge-stats', description: 'Judge decision stats' },
+      { method: 'GET', path: '/api/db-stats', description: 'Database stats: row count, date range, total cost' },
       { method: 'GET', path: '/api/export', description: 'Download usage data as CSV', params: ['range=1h|6h|12h|24h|7d|30d'] },
       { method: 'GET', path: '/diagnose', description: 'Health/diagnostic check' },
     ],
@@ -299,7 +324,7 @@ app.get('/api/export', (req, res) => {
     lines.push(cols.map(c => csvEsc(row[c])).join(','));
   }
 
-  const range = req.query.range || '24h';
+  const range = (req.query.range || '24h').replace(/[^a-zA-Z0-9]/g, '');
   const filename = `token-usage-${range}-${new Date().toISOString().slice(0, 10)}.csv`;
   res.set('Content-Type', 'text/csv');
   res.set('Content-Disposition', `attachment; filename="${filename}"`);

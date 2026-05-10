@@ -723,6 +723,67 @@ describe('E2E: Token Proxy', { timeout: 30000 }, () => {
   });
 
   // =========================================================================
+  // CSV export
+  // =========================================================================
+
+  describe('/api/export', () => {
+    it('returns CSV content with headers', async () => {
+      const res = await fetch(`http://127.0.0.1:${PROXY_PORT}/api/export?range=24h`);
+      assert.equal(res.status, 200);
+      assert.ok(res.headers.get('content-type').includes('text/csv'));
+      assert.ok(res.headers.get('content-disposition').includes('attachment'));
+      const body = await res.text();
+      const firstLine = body.split('\n')[0];
+      assert.ok(firstLine.includes('timestamp'));
+      assert.ok(firstLine.includes('model'));
+      assert.ok(firstLine.includes('estimated_cost_usd'));
+    });
+  });
+
+  describe('/api/export-excel', () => {
+    it('returns XLSX with chart for valid range', async () => {
+      const res = await fetch(`http://127.0.0.1:${PROXY_PORT}/api/export-excel?range=24h`);
+      assert.equal(res.status, 200);
+      assert.ok(res.headers.get('content-type').includes('spreadsheetml.sheet'));
+      assert.ok(res.headers.get('content-disposition').includes('.xlsx'));
+      const buf = Buffer.from(await res.arrayBuffer());
+      assert.ok(buf.length > 1000, 'XLSX should be >1KB');
+      assert.equal(buf[0], 0x50);
+      assert.equal(buf[1], 0x4B);
+    });
+  });
+
+  // =========================================================================
+  // Database stats & API index
+  // =========================================================================
+
+  describe('/api/db-stats', () => {
+    it('returns database statistics', async () => {
+      const { status, json } = await req('GET', '/api/db-stats');
+      assert.equal(status, 200);
+      assert.ok(typeof json.rows === 'number');
+      assert.ok(json.rows > 0, 'should have rows from prior tests');
+      assert.ok(typeof json.total_cost === 'number');
+      assert.ok(typeof json.models === 'number');
+      assert.ok(json.oldest !== null);
+      assert.ok(json.newest !== null);
+    });
+  });
+
+  describe('/api/', () => {
+    it('returns self-documenting endpoint list', async () => {
+      const { status, json } = await req('GET', '/api/');
+      assert.equal(status, 200);
+      assert.equal(json.name, 'Token Tracker API');
+      assert.ok(Array.isArray(json.endpoints));
+      assert.ok(json.endpoints.length >= 10);
+      const paths = json.endpoints.map(e => e.path);
+      assert.ok(paths.includes('/api/summary'));
+      assert.ok(paths.includes('/api/export'));
+    });
+  });
+
+  // =========================================================================
   // 404 catch-all
   // =========================================================================
 
