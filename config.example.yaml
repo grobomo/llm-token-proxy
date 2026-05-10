@@ -28,16 +28,21 @@ db: ./usage.db
 
 # Cost per million tokens (USD). Update as pricing changes — see
 # https://www.anthropic.com/pricing and your gateway's published rates.
-# NOTE: Use prefix matching — "claude-4.6-opus" also covers "claude-4.6-opus-aws".
+# List every model ID variant your upstreams return. Different gateways
+# (Anthropic direct, RDSec, AWS Bedrock) return different model strings.
 pricing:
-  claude-opus-4-7:    { input: 15.00, output: 75.00, cache_read: 1.50, cache_write: 18.75 }
-  claude-4.6-opus:    { input: 15.00, output: 75.00, cache_read: 1.50, cache_write: 18.75 }
-  claude-opus-4-6:    { input: 15.00, output: 75.00, cache_read: 1.50, cache_write: 18.75 }
-  claude-4.6-sonnet:  { input: 3.00, output: 15.00, cache_read: 0.30, cache_write: 3.75 }
-  claude-sonnet-4-6:  { input: 3.00, output: 15.00, cache_read: 0.30, cache_write: 3.75 }
-  claude-4.5-haiku:   { input: 1.00, output:  5.00, cache_read: 0.10, cache_write: 1.25 }
-  claude-haiku-4-5:   { input: 1.00, output:  5.00, cache_read: 0.10, cache_write: 1.25 }
-  default:            { input: 3.00, output: 15.00, cache_read: 0.30, cache_write: 3.75 }
+  claude-opus-4-7:             { input: 15.00, output: 75.00, cache_read: 1.50, cache_write: 18.75 }
+  claude-4.6-opus:             { input: 15.00, output: 75.00, cache_read: 1.50, cache_write: 18.75 }
+  claude-opus-4-6:             { input: 15.00, output: 75.00, cache_read: 1.50, cache_write: 18.75 }
+  claude-4.6-opus-aws:         { input: 15.00, output: 75.00, cache_read: 1.50, cache_write: 18.75 }
+  claude-4.6-sonnet:           { input:  3.00, output: 15.00, cache_read: 0.30, cache_write:  3.75 }
+  claude-sonnet-4-6:           { input:  3.00, output: 15.00, cache_read: 0.30, cache_write:  3.75 }
+  claude-4.5-sonnet-aws:       { input:  3.00, output: 15.00, cache_read: 0.30, cache_write:  3.75 }
+  claude-4.5-haiku:            { input:  1.00, output:  5.00, cache_read: 0.10, cache_write:  1.25 }
+  claude-haiku-4-5:            { input:  1.00, output:  5.00, cache_read: 0.10, cache_write:  1.25 }
+  claude-4.5-haiku-aws:        { input:  1.00, output:  5.00, cache_read: 0.10, cache_write:  1.25 }
+  claude-haiku-4-5-20251001:   { input:  1.00, output:  5.00, cache_read: 0.10, cache_write:  1.25 }
+  default:                     { input:  3.00, output: 15.00, cache_read: 0.30, cache_write:  3.75 }
 
 budget:
   monthly_limit: 100.00     # USD
