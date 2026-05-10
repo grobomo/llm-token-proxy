@@ -1,33 +1,45 @@
 # TODO
 
-## Session State (2026-05-09)
+## Session State (2026-05-10)
 
-Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `4a657c2`.
-Schema v5 active (original_model column). Model override infrastructure deployed but no active rules.
-E2E test suite: 60 tests passing (cache estimator + proxy e2e).
-Bug fixed: proxy no longer crashes on unknown API key prefix (graceful 400 instead of unhandled throw).
+Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `e05f531`.
+Schema v6 active (cache_estimated column). 61 tests passing.
+DB moved to `~/.token-proxy/usage.db` (safe from git operations).
+Proxy running on latest code, LKG recorded.
 
-### Completed this session
-- **T131: Safe restart with auto-rollback** — `scripts/safe-restart.sh` rewritten:
-  - Pre-flight: loads proxy.js on temp port (PORT env override) to verify code compiles before touching running proxy
-  - Auto-rollback: if health/e2e fails after restart, stashes uncommitted work, checks out last-known-good commit, restarts again
-  - Tracks `.last-known-good-commit` (seeded with ddb5c39)
-  - Tested end-to-end: pre-flight → drain → start → health → e2e → record LKG. All passed.
+### Completed this session (2026-05-10)
+- **T131: Safe restart with auto-rollback** — `scripts/safe-restart.sh`:
+  - Pre-flight on temp port, auto-rollback to LKG on failure, DB backup before restart.
+  - Tested end-to-end. All passed.
 - **T132: Settings.json protection audit + fixes:**
-  - Fixed settings-watchdog-gate.js — 4 spurious `return null;` lines made it a no-op. All 7 attack vectors now blocked.
-  - Created `~/.claude/proxy/switch_llm_provider.py` — backup → mutate → verify → auto-revert. Handles chattr +i via sudo.
-  - Created `~/.claude/proxy/restore-settings.sh` — manual one-command restore for when everything is broken.
-  - Created `~/.claude/settings.json.bak-rdsec-url.manifest` — documents why golden backup is trusted + how to re-verify.
-  - Tested: 8 attack vectors (Edit, Write, echo redirect, cp, sed, tee, mv, python open) all blocked.
-  - Tested: auto-revert on bad token change works. Valid changes apply and verify. chattr re-locks after every write.
-- Recovered stashed T111 (Postgres storage) + dashboard enhancements from broken session. All code restored, 60 tests pass.
-- Installed better-sqlite3 for deploy/server.js.
+  - Fixed settings-watchdog-gate.js (4 spurious `return null;`). 8 attack vectors tested, all blocked.
+  - Created `switch_llm_provider.py` (backup→mutate→verify→auto-revert, handles chattr +i).
+  - Created `restore-settings.sh` (manual one-command restore).
+  - Created golden backup manifest.
+- **T133: Uptime tracking** — /health now reports started_at, uptime, requests, errors. /api/uptime with historical availability, 4xx/5xx split. Dashboard health bar shows uptime widget.
+- **T134: DB protection** — moved DB to ~/.token-proxy/usage.db (outside git working tree). Tilde expansion in config. safe-restart.sh backs up DB before every restart.
+- **T135: Factory Floor hook architecture** — `docs/hook-architecture.md`:
+  - Design: Opus=supervisor, Haiku=manager, JS gates=gears.
+  - JS gates stay for mechanical enforcement (no change).
+  - Haiku PostToolUse spirit-check: audits whether spirit of rules was followed.
+  - State file bridge: violation-state.json → violation-gate.js blocks next PreToolUse.
+  - Staged in hooks/ dir, install with `bash hooks/install.sh`.
+  - Spirit rules in `~/.claude/proxy/spirit-rules.yaml`.
+- Fixed success_rate: excludes 4xx from denominator (only 2xx vs 5xx).
+- Diagnosed stop hook: auto-continue.js preempts Haiku analysis. Needs hook-runner fix.
+- Recovered all stashed work from broken session. 61 tests pass.
 
 ### Next session priorities
-- [ ] T129: Test Blueprint MCP from WSL (needs Chrome + Blueprint extension running)
+- [ ] T129: Test Blueprint MCP — use `mcp-manager start blueprint-extra` then call tools. Currently blocked by init timeout (mcp-manager ↔ Blueprint v1.9.21 passive mode handshake). Chrome extension shows connected, relay on port 5555 is up. File issue in blueprint-extra project.
 - [ ] T130: Cost source-of-truth (depends on T129)
-- [ ] T111: Pluggable storage backend (Postgres) — storage facade exists in lib/storage/ but not wired into db.js yet
-- [ ] Commit current working tree (14 modified + 7 new files, 60 tests passing)
+- [ ] T111: Wire storage facade into db.js (lib/storage/ exists but not connected)
+- [ ] T136: Build gate to enforce "use mcp-manager for all MCP servers" (PreToolUse gate)
+- [ ] Install spirit-check hooks (`bash hooks/install.sh` — needs hook-runner project or manual install)
+- [ ] Fix stop hook: move auto-continue out of BLOCKING_MODULES, let Haiku decide (needs hook-runner)
+
+### Notes
+- Blueprint relay script removed from this project (archived) — belongs in blueprint-extra project
+- Blueprint access is NOT a blocker — use mcp-manager to start/call. If init times out, ask user to check Chrome extension.
 
 ---
 
