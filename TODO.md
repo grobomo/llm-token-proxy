@@ -2,23 +2,28 @@
 
 ## Session State (2026-05-10)
 
-Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `a4dc14f`.
+Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `4e501d0`.
 65 tests passing. Schema v6 active. DB at `~/.token-proxy/usage.db`.
-tokentracker.click fully live — all data merged (7,545 rows, $719.98), sync every 5 min.
+tokentracker.click fully live — 7,545 rows, $695.07 (recalculated), sync every 5 min.
 
 ### Completed this session (2026-05-10)
-- **Excel export** — `GET /api/export-excel` on both proxy and deploy server. XLSX with embedded bar chart + 4 sheets.
-- **Deploy parity** — Added uptime endpoint, fixed cache-estimation summary, enriched cost-breakdown with token columns.
-- **DB merge** — `scripts/merge-dbs.js` merged 7,129 Lightsail rows + 416 local rows = 7,545 total. No duplicates.
-- **Auto-sync** — cron fires every 5 min, rsyncs to Lightsail. Deploy server auto-reopens DB on mtime change.
-- **Security** — filename sanitization, Secure cookie flag, .gitignore cleanup.
-- **E2E test fix** — waitForReady 10s → 20s for WSL startup latency.
-- **Cron fixes** — spike-detect + sync-dashboard paths updated to correct project dir.
+- **Excel export** — `GET /api/export-excel` on both proxy and deploy server. XLSX with embedded bar chart.
+- **Deploy parity** — uptime endpoint, cache-estimation summary fix, cost-breakdown token columns.
+- **DB merge + sync** — merged 7,129 remote + 416 local rows. Cron syncs every 5 min. Auto-reopen DB on mtime change.
+- **Blueprint MCP fix** — changed servers.yaml from Windows node to WSL node. Server starts (31 tools). Chrome extension needs manual reload to connect.
+- **Cost accuracy audit** — compared proxy vs RDSec billing (May 7-9):
+  - RDSec: $1,010.83 for your usage. Proxy: $695.07 (after fix).
+  - **Fixed**: double-charging cache tokens in pricing.js. Saved $24.91 on historical data.
+  - **Remaining gap**: proxy captures fewer calls than RDSec (missing 81-1,109 traces/day). Some calls bypass proxy.
+  - **Root cause**: `claude-4.6-opus` (Vertex AI) reports ~130K input_tokens but only 27K as cache_read — the rest are cache tokens not broken out by the upstream. Proxy can't fix what the upstream doesn't report.
+- **Pricing config** — added all AWS/dated model variants.
+- **Security** — filename sanitization, Secure cookie, .gitignore cleanup.
+- **Test stability** — increased timeouts for WSL startup latency + exceljs cold-start.
 
 ### Open priorities
 - [ ] T111: Pluggable storage backend (Postgres) for multi-host deployments
-- [ ] T129: Test Blueprint MCP
-- [ ] T130: Cost source-of-truth (depends on T129)
+- [ ] T129: Test Blueprint MCP — server fixed, needs Chrome extension reload
+- [ ] T130: Cost source-of-truth — proxy underestimates by ~30% vs RDSec. Main gap is missing calls (not going through proxy) + upstream not reporting cache tokens separately for Vertex AI models.
 - [ ] T136: Build gate to enforce "use mcp-manager for all MCP servers"
 - [ ] T140: Consider daily/weekly email digest using dashboard data + range API
 
@@ -172,3 +177,7 @@ tokentracker.click fully live — all data merged (7,545 rows, $719.98), sync ev
 - [x] T126b: E2E test suite — `npm test` runs 25 tests via node:test. Mock upstream, real proxy process, real HTTP requests. Covers: health, diagnose, proxy pass-through, /ask L1/L2/L3, /judge L1/L2/L3, escalation polling, rate limits, stats, 404. All pass.
 - [x] T127: Docs audit — fixed auth section, added /v1/* proxy + /health + /diagnose docs, created `docs/escalation-flow.md`, added testing section to README.
 - [x] T128: Streaming SSE e2e test — 2 new tests (SSE forwarding + upstream error). Total: 27 tests pass.
+
+## Open Tasks
+- [ ] T001: Proxy watchdog service — runs at Windows login via Task Scheduler. Pings :4100/health every 30s. If proxy down: restart it. If stays down after 3 retries: revert settings.json to known-good backup (no proxy, direct Anthropic). If proxy recovers: re-enable proxy in settings.json. Backs up settings.json with timestamp before every change. Restores from most recent backup when haiku health check fails.
+- [ ] T002: Expose /ask endpoint — simpler than /v1/chat/completions for hook gate calls. Takes {prompt, caller, jsonMode, maxTokens}. Returns {ok, content, parsed, ms}. Removes need for OpenAI-compatible wrapper in haiku-client.js.
