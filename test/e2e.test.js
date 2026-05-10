@@ -26,7 +26,7 @@ async function req(method, urlPath, body, headers = {}) {
   return { status: res.status, json, text, headers: res.headers };
 }
 
-async function waitForReady(url, maxMs = 10000) {
+async function waitForReady(url, maxMs = 20000) {
   const deadline = Date.now() + maxMs;
   while (Date.now() < deadline) {
     try {

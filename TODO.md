@@ -2,9 +2,8 @@
 
 ## Session State (2026-05-10)
 
-Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `f467c87`.
-Schema v6 active (cache_estimated column). 68 tests passing.
-DB at `~/.token-proxy/usage.db` (safe from git operations).
+Published to https://github.com/grobomo/llm-token-proxy (public). 68 tests passing.
+Schema v6 active (cache_estimated column). DB at `~/.token-proxy/usage.db`.
 
 ### Completed this session (2026-05-10)
 - **Excel export** — `GET /api/export-excel`: XLSX workbook with embedded OOXML bar chart + 4 sheets (Hourly Spend, Model Breakdown, Project Costs, Raw Data). exceljs + jszip chart injection.
