@@ -2,19 +2,18 @@
 
 ## Session State (2026-05-10)
 
-Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `9b56d8d`.
+Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `a4dc14f`.
 65 tests passing. Schema v6 active. DB at `~/.token-proxy/usage.db`.
-Deployed to tokentracker.click — Excel export, db-stats, security fixes all live.
+tokentracker.click fully live — all data merged (7,545 rows, $719.98), sync every 5 min.
 
 ### Completed this session (2026-05-10)
-- **Excel export** — `GET /api/export-excel`: XLSX workbook with embedded OOXML bar chart + 4 sheets. exceljs + jszip chart injection. Added to both proxy and deploy server.
-- **db-stats endpoint** — `GET /api/db-stats` on deploy server for dashboard parity.
-- **Security hardening** — CSV/Excel filename sanitized, session cookie gets `Secure` flag on HTTPS.
-- **Dashboard** — Excel download button next to CSV.
-- **Deploy to tokentracker.click** — rsync'd server/dashboard/lib, installed deps, restarted. Verified live.
-- **E2E test timeout fix** — waitForReady 10s → 20s for WSL node:sqlite startup latency.
-- **Rebase + merge** — resolved conflicts from parallel WSL session (T131-T135 work).
-- Cleaned up test-export.xlsx artifacts.
+- **Excel export** — `GET /api/export-excel` on both proxy and deploy server. XLSX with embedded bar chart + 4 sheets.
+- **Deploy parity** — Added uptime endpoint, fixed cache-estimation summary, enriched cost-breakdown with token columns.
+- **DB merge** — `scripts/merge-dbs.js` merged 7,129 Lightsail rows + 416 local rows = 7,545 total. No duplicates.
+- **Auto-sync** — cron fires every 5 min, rsyncs to Lightsail. Deploy server auto-reopens DB on mtime change.
+- **Security** — filename sanitization, Secure cookie flag, .gitignore cleanup.
+- **E2E test fix** — waitForReady 10s → 20s for WSL startup latency.
+- **Cron fixes** — spike-detect + sync-dashboard paths updated to correct project dir.
 
 ### Open priorities
 - [ ] T111: Pluggable storage backend (Postgres) for multi-host deployments
