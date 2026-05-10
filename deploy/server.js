@@ -13,6 +13,8 @@ const HTTPS_PORT = process.env.HTTPS_PORT || 443;
 const USAGE_DB_PATH = process.env.USAGE_DB || path.resolve(__dirname, 'usage.db');
 const DOMAIN = process.env.DOMAIN || 'tokentracker.click';
 const CERT_DIR = `/etc/letsencrypt/live/${DOMAIN}`;
+const STARTED_AT = new Date();
+let totalRequests = 0;
 
 audit.init();
 
@@ -21,6 +23,7 @@ app.set('trust proxy', true);
 
 app.use(audit.middleware);
 app.use(express.json());
+app.use((req, res, next) => { totalRequests++; next(); });
 
 // --- Public routes (no auth required) ---
 app.get('/login', (req, res) => {
@@ -123,6 +126,7 @@ app.get('/api/cost-breakdown', (req, res) => {
   const interval = parseRange(req);
   const models = query(`
     SELECT model, COUNT(*) AS calls, SUM(estimated_cost_usd) AS cost,
+           SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens,
            SUM(cache_read_tokens) AS cache_read_tokens,
            SUM(cache_write_tokens) AS cache_write_tokens
     FROM usage_log
@@ -239,6 +243,40 @@ app.get('/api/db-stats', (req, res) => {
   });
 });
 
+app.get('/api/uptime', (req, res) => {
+  const uptimeMs = Date.now() - STARTED_AT.getTime();
+  const s = Math.floor(uptimeMs / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const uptimeHuman = d > 0 ? `${d}d ${h}h ${m}m` : h > 0 ? `${h}h ${m}m` : `${m}m`;
+
+  const last24h = query(`
+    SELECT COUNT(*) AS total,
+           SUM(CASE WHEN http_status BETWEEN 200 AND 299 THEN 1 ELSE 0 END) AS ok,
+           SUM(CASE WHEN http_status >= 500 THEN 1 ELSE 0 END) AS errors
+    FROM usage_log
+    WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+  `);
+  const stats = last24h[0] || { total: 0, ok: 0, errors: 0 };
+  const denominator = (stats.ok || 0) + (stats.errors || 0);
+  const successRate = denominator > 0 ? parseFloat(((stats.ok / denominator) * 100).toFixed(1)) : 100;
+
+  res.json({
+    started_at: STARTED_AT.toISOString(),
+    uptime_seconds: Math.floor(uptimeMs / 1000),
+    uptime_human: uptimeHuman,
+    requests_this_session: totalRequests,
+    total_requests: totalRequests,
+    last_24h: {
+      total: stats.total || 0,
+      success: stats.ok || 0,
+      errors: stats.errors || 0,
+      success_rate: successRate,
+    },
+  });
+});
+
 app.get('/api/cache-estimation', (req, res) => {
   const interval = parseRange(req);
   const stats = query(`
@@ -250,7 +288,19 @@ app.get('/api/cache-estimation', (req, res) => {
     WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
     GROUP BY upstream, cache_estimated ORDER BY total_cost DESC
   `);
-  res.json({ rows: stats, summary: { estimated_calls: 0, estimated_cost: 0, actual_calls: 0, actual_cost: 0 } });
+  const summary = { estimated_calls: 0, estimated_cost: 0, actual_calls: 0, actual_cost: 0 };
+  for (const r of stats) {
+    if (r.cache_estimated) {
+      summary.estimated_calls += r.calls || 0;
+      summary.estimated_cost += r.total_cost || 0;
+    } else {
+      summary.actual_calls += r.calls || 0;
+      summary.actual_cost += r.total_cost || 0;
+    }
+  }
+  summary.estimated_cost = parseFloat(summary.estimated_cost.toFixed(4));
+  summary.actual_cost = parseFloat(summary.actual_cost.toFixed(4));
+  res.json({ rows: stats, summary });
 });
 
 // --- /diagnose — stub for dashboard health panel ---
@@ -289,6 +339,7 @@ app.get('/api/', (req, res) => {
       { method: 'GET', path: '/api/cache-estimation', description: 'Cache estimation stats', params: ['range=1h|6h|12h|24h|7d|30d'] },
       { method: 'GET', path: '/api/judge-stats', description: 'Judge decision stats' },
       { method: 'GET', path: '/api/db-stats', description: 'Database stats: row count, date range, total cost' },
+      { method: 'GET', path: '/api/uptime', description: 'Server uptime and 24h success rate' },
       { method: 'GET', path: '/api/export', description: 'Download usage data as CSV', params: ['range=1h|6h|12h|24h|7d|30d'] },
       { method: 'GET', path: '/api/export-excel', description: 'Download Excel workbook with chart', params: ['range=1h|6h|12h|24h|7d|30d'] },
       { method: 'GET', path: '/diagnose', description: 'Health/diagnostic check' },

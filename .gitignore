@@ -31,3 +31,12 @@ SESSION_STATE.md
 .claude-next-prompt
 .claude/
 .last-known-good-commit
+
+# Screenshots / test artifacts
+*.png
+*.xlsx
+.playwright-mcp/
+
+# Archive / backups (local only)
+archive/
+backups/
