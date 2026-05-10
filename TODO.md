@@ -2,31 +2,26 @@
 
 ## Session State (2026-05-10)
 
-Published to https://github.com/grobomo/llm-token-proxy (public). 68 tests passing.
-Schema v6 active (cache_estimated column). DB at `~/.token-proxy/usage.db`.
+Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `9b56d8d`.
+65 tests passing. Schema v6 active. DB at `~/.token-proxy/usage.db`.
+Deployed to tokentracker.click — Excel export, db-stats, security fixes all live.
 
 ### Completed this session (2026-05-10)
-- **Excel export** — `GET /api/export-excel`: XLSX workbook with embedded OOXML bar chart + 4 sheets (Hourly Spend, Model Breakdown, Project Costs, Raw Data). exceljs + jszip chart injection.
-- **db-stats endpoint** — `GET /api/db-stats` added to deploy/server.js for dashboard parity.
+- **Excel export** — `GET /api/export-excel`: XLSX workbook with embedded OOXML bar chart + 4 sheets. exceljs + jszip chart injection. Added to both proxy and deploy server.
+- **db-stats endpoint** — `GET /api/db-stats` on deploy server for dashboard parity.
 - **Security hardening** — CSV/Excel filename sanitized, session cookie gets `Secure` flag on HTTPS.
 - **Dashboard** — Excel download button next to CSV.
-- Tests: 67 → 68. All passing.
+- **Deploy to tokentracker.click** — rsync'd server/dashboard/lib, installed deps, restarted. Verified live.
+- **E2E test timeout fix** — waitForReady 10s → 20s for WSL node:sqlite startup latency.
+- **Rebase + merge** — resolved conflicts from parallel WSL session (T131-T135 work).
+- Cleaned up test-export.xlsx artifacts.
 
-### Prior session (2026-05-10, WSL)
-- T131: Safe restart with auto-rollback
-- T132: Settings.json protection audit + fixes
-- T133: Uptime tracking
-- T134: DB protection (moved DB outside git)
-- T135: Factory Floor hook architecture
-
-### Next session priorities
-- [ ] Deploy updated server code to tokentracker.click (rsync deploy/ to Lightsail)
+### Open priorities
 - [ ] T111: Pluggable storage backend (Postgres) for multi-host deployments
 - [ ] T129: Test Blueprint MCP
 - [ ] T130: Cost source-of-truth (depends on T129)
 - [ ] T136: Build gate to enforce "use mcp-manager for all MCP servers"
 - [ ] T140: Consider daily/weekly email digest using dashboard data + range API
-- [ ] Clean up test files: test-export.xlsx, test-export-30d.xlsx
 
 ---
 
