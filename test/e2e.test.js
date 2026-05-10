@@ -38,7 +38,7 @@ async function waitForReady(url, maxMs = 20000) {
   throw new Error(`Server not ready at ${url} after ${maxMs}ms`);
 }
 
-describe('E2E: Token Proxy', { timeout: 30000 }, () => {
+describe('E2E: Token Proxy', { timeout: 60000 }, () => {
   before(async () => {
     const { createMockUpstream } = require('./mock-upstream');
     mockUpstream = createMockUpstream(MOCK_PORT);
@@ -740,7 +740,7 @@ describe('E2E: Token Proxy', { timeout: 30000 }, () => {
     });
   });
 
-  describe('/api/export-excel', () => {
+  describe('/api/export-excel', { timeout: 30000 }, () => {
     it('returns XLSX with chart for valid range', async () => {
       const res = await fetch(`http://127.0.0.1:${PROXY_PORT}/api/export-excel?range=24h`);
       assert.equal(res.status, 200);

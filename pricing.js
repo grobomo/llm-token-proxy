@@ -52,10 +52,16 @@ function calculateCost(model, usage) {
     return 0;
   }
 
-  const inputTokens      = usage.input_tokens                   || 0;
+  const rawInputTokens   = usage.input_tokens                   || 0;
   const outputTokens     = usage.output_tokens                  || 0;
   const cacheReadTokens  = usage.cache_read_input_tokens        || 0;
   const cacheWriteTokens = usage.cache_creation_input_tokens    || 0;
+
+  // Some upstreams include cache tokens inside input_tokens. Subtract them
+  // to avoid double-charging: once at the full input rate and again at the
+  // cache rate. If input_tokens is already net-of-cache, subtraction yields
+  // the same value (cache fields are 0).
+  const inputTokens = Math.max(0, rawInputTokens - cacheReadTokens - cacheWriteTokens);
 
   // Pricing is per million tokens
   const M = 1_000_000;
