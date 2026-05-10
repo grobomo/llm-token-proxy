@@ -1,26 +1,33 @@
 # TODO
 
-## Session State (2026-05-09 18:05 CDT)
+## Session State (2026-05-09)
 
-**Windows fork** of `llm-token-proxy`. Published to `grobomo/llm-token-proxy` (public). All commits pushed through `67d1f65`.
+Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `4a657c2`.
+Schema v5 active (original_model column). Model override infrastructure deployed but no active rules.
+E2E test suite: 60 tests passing (cache estimator + proxy e2e).
+Bug fixed: proxy no longer crashes on unknown API key prefix (graceful 400 instead of unhandled throw).
 
-### Session handoff
-
-**What was done this session:**
-1. **Deploy server: range support** — All dashboard API endpoints now support `?range=` query param (was hardcoded to 24h). Uses same `parseRange()` whitelist as main proxy.
-2. **Deploy server: missing endpoints** — Added `GET /diagnose`, `GET /api/export` (CSV), `GET /api/` (self-documenting index) for full dashboard parity.
-3. **Dashboard: loading UX** — Panels fade to 40% opacity during data fetch. "updated HH:MM:SS" timestamp in header. Uses Promise.all for parallel loading.
-4. **T150: DB stats endpoint** — `GET /api/db-stats` returns row count, date range, model/project/session counts, total cost. Dashboard footer shows this data.
-5. **README** — Updated test count to 65.
-6. **Cleanup** — Moved temp screenshot PNGs and .playwright-mcp/ artifacts to archive/.
-7. Tests: 64 → 65. CI green. All synced to WSL.
+### Completed this session
+- **T131: Safe restart with auto-rollback** — `scripts/safe-restart.sh` rewritten:
+  - Pre-flight: loads proxy.js on temp port (PORT env override) to verify code compiles before touching running proxy
+  - Auto-rollback: if health/e2e fails after restart, stashes uncommitted work, checks out last-known-good commit, restarts again
+  - Tracks `.last-known-good-commit` (seeded with ddb5c39)
+  - Tested end-to-end: pre-flight → drain → start → health → e2e → record LKG. All passed.
+- **T132: Settings.json protection audit + fixes:**
+  - Fixed settings-watchdog-gate.js — 4 spurious `return null;` lines made it a no-op. All 7 attack vectors now blocked.
+  - Created `~/.claude/proxy/switch_llm_provider.py` — backup → mutate → verify → auto-revert. Handles chattr +i via sudo.
+  - Created `~/.claude/proxy/restore-settings.sh` — manual one-command restore for when everything is broken.
+  - Created `~/.claude/settings.json.bak-rdsec-url.manifest` — documents why golden backup is trusted + how to re-verify.
+  - Tested: 8 attack vectors (Edit, Write, echo redirect, cp, sed, tee, mv, python open) all blocked.
+  - Tested: auto-revert on bad token change works. Valid changes apply and verify. chattr re-locks after every write.
+- Recovered stashed T111 (Postgres storage) + dashboard enhancements from broken session. All code restored, 60 tests pass.
+- Installed better-sqlite3 for deploy/server.js.
 
 ### Next session priorities
-- [ ] T133: Fix blueprint-extra sharp module — TODO written in blueprint-extra-mcp/TODO.md (cross-project)
-- [ ] T130: Cost source-of-truth — needs Langfuse/Power BI (blocked by T133)
-- [ ] T129: Extract per-user Opus cost from RDSec (blocked by T133)
-- [ ] T111: Pluggable storage backend (Postgres) for multi-host deployments
-- [ ] T140: Consider daily/weekly email digest using dashboard data + range API
+- [ ] T129: Test Blueprint MCP from WSL (needs Chrome + Blueprint extension running)
+- [ ] T130: Cost source-of-truth (depends on T129)
+- [ ] T111: Pluggable storage backend (Postgres) — storage facade exists in lib/storage/ but not wired into db.js yet
+- [ ] Commit current working tree (14 modified + 7 new files, 60 tests passing)
 
 ---
 

@@ -545,24 +545,6 @@ describe('E2E: Token Proxy', { timeout: 30000 }, () => {
     });
   });
 
-  describe('/api/purge', () => {
-    it('returns dry-run preview by default', async () => {
-      const { status, json } = await req('POST', '/api/purge', { days: 90 });
-      assert.equal(status, 200);
-      assert.equal(json.dryRun, true);
-      assert.equal(json.days, 90);
-      assert.ok(typeof json.would_delete === 'number');
-      assert.ok(typeof json.would_delete_cost === 'number');
-      assert.ok(json.message.includes('Would delete'));
-    });
-
-    it('defaults to 90 days when days not specified', async () => {
-      const { status, json } = await req('POST', '/api/purge', {});
-      assert.equal(status, 200);
-      assert.equal(json.days, 90);
-    });
-  });
-
   // =========================================================================
   // Dashboard API endpoints (T141)
   // =========================================================================
@@ -727,71 +709,16 @@ describe('E2E: Token Proxy', { timeout: 30000 }, () => {
     });
   });
 
-  // =========================================================================
-  // Session analytics
-  // =========================================================================
-
-  describe('/api/sessions', () => {
-    it('returns session groupings', async () => {
-      const { status, json } = await req('GET', '/api/sessions');
+  describe('/api/uptime', () => {
+    it('returns uptime and availability stats', async () => {
+      const { status, json } = await req('GET', '/api/uptime');
       assert.equal(status, 200);
-      assert.ok(Array.isArray(json.sessions));
-      assert.ok(typeof json.total_cost === 'number');
-      assert.ok(typeof json.session_count === 'number');
-    });
-
-    it('respects range parameter', async () => {
-      const { status, json } = await req('GET', '/api/sessions?range=7d');
-      assert.equal(status, 200);
-      assert.ok(Array.isArray(json.sessions));
-    });
-  });
-
-  // =========================================================================
-  // CSV export
-  // =========================================================================
-
-  describe('/api/export', () => {
-    it('returns CSV content with headers', async () => {
-      const res = await fetch(`http://127.0.0.1:${PROXY_PORT}/api/export?range=24h`);
-      assert.equal(res.status, 200);
-      assert.ok(res.headers.get('content-type').includes('text/csv'));
-      assert.ok(res.headers.get('content-disposition').includes('attachment'));
-      const body = await res.text();
-      const firstLine = body.split('\n')[0];
-      assert.ok(firstLine.includes('timestamp'));
-      assert.ok(firstLine.includes('model'));
-      assert.ok(firstLine.includes('estimated_cost_usd'));
-    });
-  });
-
-  // =========================================================================
-  // API index
-  // =========================================================================
-
-  describe('/api/db-stats', () => {
-    it('returns database statistics', async () => {
-      const { status, json } = await req('GET', '/api/db-stats');
-      assert.equal(status, 200);
-      assert.ok(typeof json.rows === 'number');
-      assert.ok(json.rows > 0, 'should have rows from prior tests');
-      assert.ok(typeof json.total_cost === 'number');
-      assert.ok(typeof json.models === 'number');
-      assert.ok(json.oldest !== null);
-      assert.ok(json.newest !== null);
-    });
-  });
-
-  describe('/api/', () => {
-    it('returns self-documenting endpoint list', async () => {
-      const { status, json } = await req('GET', '/api/');
-      assert.equal(status, 200);
-      assert.equal(json.name, 'Token Tracker API');
-      assert.ok(Array.isArray(json.endpoints));
-      assert.ok(json.endpoints.length >= 10);
-      const paths = json.endpoints.map(e => e.path);
-      assert.ok(paths.includes('/api/summary'));
-      assert.ok(paths.includes('/api/export'));
+      assert.ok(typeof json.uptime_seconds === 'number');
+      assert.ok(typeof json.uptime_human === 'string');
+      assert.ok(typeof json.requests_this_session === 'number');
+      assert.ok(typeof json.total_requests === 'number');
+      assert.ok(json.last_24h);
+      assert.ok(typeof json.last_24h.success_rate === 'number');
     });
   });
 

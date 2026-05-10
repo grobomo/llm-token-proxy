@@ -16,9 +16,16 @@ const { estimateCacheTokens } = require('./lib/cache-estimator');
 const CONFIG_PATH = process.env.PROXY_CONFIG || path.resolve(__dirname, 'config.yaml');
 const config      = yaml.load(fs.readFileSync(CONFIG_PATH, 'utf8'));
 
-const PORT     = config.port     || 4100;
+const PORT     = parseInt(process.env.PORT, 10) || config.port || 4100;
 const BIND     = config.bind     || '127.0.0.1';
 const UPSTREAM = config.upstream;  // optional legacy single-upstream; prefer config.upstreams
+
+const STARTED_AT = new Date();
+let requestCount = 0;
+let errorCount = 0;
+global.__proxyStartedAt = STARTED_AT.getTime();
+global.__proxyRequestCount = 0;
+global.__proxyErrorCount = 0;
 
 // ---------------------------------------------------------------------------
 // Multi-upstream routing
@@ -94,6 +101,16 @@ function resolveModelOverride(model, consumer, parsed) {
   return null;
 }
 
+function formatUptime(ms) {
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
 function matchGlob(pattern, str) {
   if (!pattern.includes('*')) return pattern === str;
   const re = new RegExp('^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
@@ -117,7 +134,12 @@ function hasCache(parsed) {
 // ---------------------------------------------------------------------------
 // Database
 // ---------------------------------------------------------------------------
-db.init(config.db || path.resolve(__dirname, 'usage.db'));
+const DB_PATH = (function() {
+  const raw = config.db || './usage.db';
+  const expanded = raw.startsWith('~') ? raw.replace(/^~/, process.env.HOME || '/tmp') : raw;
+  return path.resolve(expanded);
+})();
+db.init(DB_PATH);
 
 // ---------------------------------------------------------------------------
 // Express app
@@ -160,6 +182,8 @@ app.get('/health', async (req, res) => {
     upstreamStatus = 'unreachable';
   }
 
+  const now = new Date();
+  const uptimeMs = now - STARTED_AT;
   const status = upstreamStatus === 'reachable' ? 200 : 503;
   res.status(status).json({
     status:    status === 200 ? 'ok' : 'degraded',
@@ -167,7 +191,12 @@ app.get('/health', async (req, res) => {
     upstreams: UPSTREAMS.map(u => u.name),
     proxy:     'running',
     port:      PORT,
-    ts:        new Date().toISOString(),
+    started_at: STARTED_AT.toISOString(),
+    uptime_seconds: Math.floor(uptimeMs / 1000),
+    uptime_human: formatUptime(uptimeMs),
+    requests:  requestCount,
+    errors:    errorCount,
+    ts:        now.toISOString(),
   });
 });
 
@@ -220,8 +249,8 @@ const ask = require('./lib/ask');
 const rateLimit = require('./lib/rate-limit');
 const escalation = require('./lib/escalation');
 
-ask.init(config.db || path.resolve(__dirname, 'usage.db'));
-escalation.init(config.db || path.resolve(__dirname, 'usage.db'));
+ask.init(DB_PATH);
+escalation.init(DB_PATH);
 
 function internalOnly(req, res, next) {
   const ip = req.socket.remoteAddress;
@@ -238,7 +267,7 @@ function parseBody(req) {
 // Judge endpoint (T118/T126) — semantic gate decisions with tiered escalation
 // ---------------------------------------------------------------------------
 const judge = require('./lib/judge');
-judge.init(config.db || path.resolve(__dirname, 'usage.db'));
+judge.init(DB_PATH);
 
 app.post('/judge', async (req, res) => {
   let body;
@@ -582,6 +611,8 @@ const STRIP_RESPONSE_HEADERS = new Set([
 ]);
 
 app.all('/v1/*', async (req, res) => {
+  requestCount++;
+  global.__proxyRequestCount = requestCount;
   if (shuttingDown) {
     res.set('Retry-After', '2');
     return res.status(503).json({ error: 'shutting_down', retry_after: 2 });
@@ -681,6 +712,8 @@ app.all('/v1/*', async (req, res) => {
       dispatcher: new Agent({ bodyTimeout: 0, headersTimeout: 30_000 }),
     });
   } catch (err) {
+    errorCount++;
+    global.__proxyErrorCount = errorCount;
     log('error', 'Upstream fetch failed:', err.message);
     if (!res.headersSent) {
       res.status(502).json({ error: 'upstream_unreachable', message: err.message });

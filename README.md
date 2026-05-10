@@ -73,7 +73,6 @@ Stock Claude Code and Claude Desktop **do not** send these. The cleanest way is 
 | `scripts/cost-analyzer.js` | Rules-based pattern detection (model overuse, idle spend, etc.). |
 | `scripts/cost-optimizer.js` | Suggestions based on the analyzer output. |
 | `scripts/daily-digest.js` | Daily cost summary (log/Slack/webhook). |
-| `scripts/data-retention.js` | Purge old data — dry-run by default, `--execute` to delete. |
 | `scripts/*.service`, `*.timer` | systemd user units (adjust paths). |
 | `config.example.yaml` | Example config — copy to `config.yaml`. |
 | `watchdog.example.conf` | Example watchdog config — copy to `~/.config/llm-token-proxy/watchdog.conf`. |
@@ -148,7 +147,7 @@ The API is self-documenting: `GET /api/` returns all available endpoints with de
 ## Testing
 
 ```bash
-npm test          # 67 tests — 13 cache-estimator unit + 54 e2e (mock upstream + real proxy)
+npm test          # 64 tests — 13 cache-estimator unit + 51 e2e (mock upstream + real proxy)
 ```
 
 ## Known limitations / TODO

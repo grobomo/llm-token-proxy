@@ -42,7 +42,9 @@ router.get('/', (req, res) => {
       { method: 'GET', path: '/api/cache-stats', description: 'Response cache hit/miss stats' },
       { method: 'GET', path: '/api/sessions', description: 'Per-session cost analytics', params: ['range=1h|6h|12h|24h|7d|30d', 'limit=<n>'] },
       { method: 'GET', path: '/api/export', description: 'Download usage data as CSV', params: ['range=1h|6h|12h|24h|7d|30d'] },
+      { method: 'GET', path: '/api/export-excel', description: 'Download Excel workbook with chart', params: ['range=1h|6h|12h|24h|7d|30d'] },
       { method: 'GET', path: '/api/db-stats', description: 'Database stats: row count, date range, total cost' },
+      { method: 'GET', path: '/api/uptime', description: 'Process uptime + historical availability (success rate, 5xx count)' },
       { method: 'POST', path: '/api/purge', description: 'Delete usage data older than N days (localhost only)', params: ['body: {days: 90, dryRun: true|false}'] },
       { method: 'POST', path: '/api/backfill-cache', description: 'Retroactively estimate cache tokens (localhost only)', params: ['body: {dryRun: true|false}'] },
     ],
@@ -62,6 +64,57 @@ function parseRange(req) {
   };
   return map[r] || '-24 hours';
 }
+
+// ---------------------------------------------------------------------------
+// GET /api/uptime — Process uptime + historical availability from DB
+// ---------------------------------------------------------------------------
+router.get('/uptime', (req, res) => {
+  res.set('X-Cache', 'BYPASS');
+  const uptimeMs = Date.now() - (global.__proxyStartedAt || Date.now());
+  const s = Math.floor(uptimeMs / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+
+  let dbStats = {};
+  try {
+    const firstRow = db.query(`SELECT timestamp FROM usage_log ORDER BY id ASC LIMIT 1`);
+    const totalRows = db.query(`SELECT COUNT(*) AS cnt FROM usage_log`);
+    const errRows = db.query(`SELECT COUNT(*) AS cnt FROM usage_log WHERE http_status >= 500`);
+    const last24h = db.query(`
+      SELECT COUNT(*) AS total,
+             SUM(CASE WHEN http_status >= 500 THEN 1 ELSE 0 END) AS errors,
+             SUM(CASE WHEN http_status BETWEEN 200 AND 299 THEN 1 ELSE 0 END) AS success
+      FROM usage_log
+      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+    `);
+    const l = last24h[0] || {};
+    const successRate = l.total > 0 ? ((l.success || 0) / l.total * 100) : 100;
+
+    dbStats = {
+      first_request: firstRow[0]?.timestamp || null,
+      total_requests: totalRows[0]?.cnt || 0,
+      total_5xx: errRows[0]?.cnt || 0,
+      last_24h: {
+        requests: l.total || 0,
+        success: l.success || 0,
+        errors_5xx: l.errors || 0,
+        success_rate: parseFloat(successRate.toFixed(2)),
+      },
+    };
+  } catch (e) {
+    dbStats = { error: e.message };
+  }
+
+  res.json({
+    started_at: global.__proxyStartedAt ? new Date(global.__proxyStartedAt).toISOString() : null,
+    uptime_seconds: Math.floor(uptimeMs / 1000),
+    uptime_human: d > 0 ? `${d}d ${h}h ${m}m` : h > 0 ? `${h}h ${m}m` : `${m}m`,
+    requests_this_session: global.__proxyRequestCount || 0,
+    errors_this_session: global.__proxyErrorCount || 0,
+    ...dbStats,
+  });
+});
 
 // Load config for budget limit
 function getConfig() {
@@ -635,9 +688,27 @@ router.get('/sessions', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/export-excel
+// Excel workbook with embedded bar chart + 4 data sheets.
+// ---------------------------------------------------------------------------
+router.get('/export-excel', async (req, res) => {
+  try {
+    const { buildExcelReport } = require('../lib/excel-export');
+    const range = (req.query.range || '24h').replace(/[^a-zA-Z0-9]/g, '');
+    const buf = await buildExcelReport(db, range);
+    const filename = `token-tracker-${range}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.set('Content-Disposition', `attachment; filename="${filename}"`);
+    res.set('X-Cache', 'BYPASS');
+    res.send(buf);
+  } catch (err) {
+    res.status(500).json({ error: 'internal_error', message: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/export
 // Download usage data as CSV for the selected range.
-// Query params: range (default: 24h), format (csv only for now)
 // ---------------------------------------------------------------------------
 router.get('/export', (req, res) => {
   try {
@@ -670,7 +741,7 @@ router.get('/export', (req, res) => {
       lines.push(cols.map(c => csvEsc(row[c])).join(','));
     }
 
-    const range = req.query.range || '24h';
+    const range = (req.query.range || '24h').replace(/[^a-zA-Z0-9]/g, '');
     const filename = `token-usage-${range}-${new Date().toISOString().slice(0, 10)}.csv`;
     res.set('Content-Type', 'text/csv');
     res.set('Content-Disposition', `attachment; filename="${filename}"`);

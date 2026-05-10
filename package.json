@@ -19,6 +19,8 @@
     "test": "rm -f /tmp/proxy-e2e-test.db && node --test test/cache-estimator.test.js test/e2e.test.js"
   },
   "dependencies": {
+    "better-sqlite3": "^12.9.0",
+    "exceljs": "^4.4.0",
     "express": "^4.18.2",
     "js-yaml": "^4.1.0",
     "undici": "^6.6.2"

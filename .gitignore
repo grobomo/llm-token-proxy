@@ -30,11 +30,4 @@ SESSION_STATE.md
 .claude-launch.sh
 .claude-next-prompt
 .claude/
-archive/
-backups/
-
-# Screenshots (dashboard verification artifacts)
-dashboard-*.png
-
-# Playwright MCP artifacts
-.playwright-mcp/
+.last-known-good-commit
