@@ -290,9 +290,27 @@ app.get('/api/', (req, res) => {
       { method: 'GET', path: '/api/judge-stats', description: 'Judge decision stats' },
       { method: 'GET', path: '/api/db-stats', description: 'Database stats: row count, date range, total cost' },
       { method: 'GET', path: '/api/export', description: 'Download usage data as CSV', params: ['range=1h|6h|12h|24h|7d|30d'] },
+      { method: 'GET', path: '/api/export-excel', description: 'Download Excel workbook with chart', params: ['range=1h|6h|12h|24h|7d|30d'] },
       { method: 'GET', path: '/diagnose', description: 'Health/diagnostic check' },
     ],
   });
+});
+
+// --- /api/export-excel — Excel workbook with chart ---
+app.get('/api/export-excel', async (req, res) => {
+  try {
+    const { buildExcelReport } = require('../lib/excel-export');
+    const range = (req.query.range || '24h').replace(/[^a-zA-Z0-9]/g, '');
+    const dbAdapter = { query: (sql) => query(sql) };
+    const buf = await buildExcelReport(dbAdapter, range);
+    const filename = `token-tracker-${range}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.set('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buf);
+  } catch (err) {
+    console.error('[export-excel]', err.message);
+    res.status(500).json({ error: 'internal_error', message: err.message });
+  }
 });
 
 // --- /api/export — CSV download ---
