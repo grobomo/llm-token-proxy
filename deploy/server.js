@@ -50,17 +50,21 @@ app.get('/', (req, res) => res.redirect('/login'));
 // Everything below requires a valid session
 app.use(authenticate);
 
-// --- Usage DB (read-only) ---
+// --- Usage DB (read-only, auto-reopens when file changes) ---
 let usageDb;
+let usageDbMtime = 0;
 function getUsageDb() {
-  if (!usageDb) {
-    try {
-      usageDb = new Database(USAGE_DB_PATH, { readonly: true });
-      usageDb.pragma('journal_mode = WAL');
-    } catch (err) {
-      console.error('[db] Cannot open usage.db:', err.message);
-      return null;
-    }
+  try {
+    const stat = fs.statSync(USAGE_DB_PATH);
+    const mtime = stat.mtimeMs;
+    if (usageDb && mtime === usageDbMtime) return usageDb;
+    if (usageDb) { try { usageDb.close(); } catch {} }
+    usageDb = new Database(USAGE_DB_PATH, { readonly: true });
+    usageDb.pragma('journal_mode = WAL');
+    usageDbMtime = mtime;
+  } catch (err) {
+    console.error('[db] Cannot open usage.db:', err.message);
+    return null;
   }
   return usageDb;
 }

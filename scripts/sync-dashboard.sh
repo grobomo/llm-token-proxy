@@ -6,7 +6,7 @@ set -euo pipefail
 
 INSTANCE="token-proxy-dashboard"
 REMOTE_PATH="/opt/dashboard/usage.db"
-LOCAL_DB="${USAGE_DB:-$HOME/.openclaw/workspace/token-proxy/usage.db}"
+LOCAL_DB="${USAGE_DB:-$HOME/.token-proxy/usage.db}"
 
 if [ ! -f "$LOCAL_DB" ]; then
   echo "[sync] usage.db not found at $LOCAL_DB"
