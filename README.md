@@ -66,8 +66,15 @@ Stock Claude Code and Claude Desktop **do not** send these. The cleanest way is 
 | `lib/cache-estimator.js` | Heuristic cache cost estimation for upstreams that strip cache tokens. |
 | `lib/ask.js`, `lib/judge.js` | Tiered LLM endpoint handlers. |
 | `lib/escalation.js` | Async escalation manager with polling and webhook support. |
+| `lib/excel-export.js` | XLSX workbook generator with embedded OOXML bar chart. |
+| `lib/cache.js` | Response cache with TTL and LRU eviction for dashboard API. |
 | `dashboard/` | Static HTML + JSON API at `/dashboard` and `/api/*`. |
+| `deploy/` | Standalone dashboard server for tokentracker.click (better-sqlite3, auth, HTTPS). |
 | `scripts/watchdog.sh` | End-to-end self-test. Generic; cooperates with consumer enforcers via hooks. |
+| `scripts/watchdog-win.js` | Windows-native proxy auto-restart via tmux in WSL. |
+| `scripts/merge-dbs.js` | One-time merge of remote + local usage DBs with deduplication. |
+| `scripts/sync-dashboard.sh` | Cron job — rsyncs usage.db to Lightsail every 5 min. |
+| `scripts/data-retention.js` | Purge old rows — CLI + POST /api/purge. |
 | `scripts/backfill-cache-estimates.js` | Standalone cache estimation backfill for historical data. |
 | `scripts/watchdog-ctl.sh` | Operator CLI: status, maintenance, disable/enable, tick, tail. |
 | `scripts/cost-analyzer.js` | Rules-based pattern detection (model overuse, idle spend, etc.). |
@@ -137,7 +144,8 @@ The dashboard at `/dashboard` shows:
 - **Cost optimization** — session restart cost vs per-message context cost with break-even analysis
 - **Judge decisions** — gate decision log (when using `/judge` endpoints)
 - **Health** — proxy status + upstream reachability with auto-refresh
-- **CSV export** — download usage data for any time range via the header button
+- **CSV / Excel export** — download usage data or XLSX workbook with embedded chart
+- **Daily digest** — `GET /api/digest?period=daily|weekly` returns styled HTML report
 - **Range selector** — switch between 1h, 6h, 12h, 24h, 7d, 30d views
 
 Failed calls (HTTP 4xx/5xx) are filtered from cost panels to reduce noise.
@@ -147,7 +155,7 @@ The API is self-documenting: `GET /api/` returns all available endpoints with de
 ## Testing
 
 ```bash
-npm test          # 64 tests — 13 cache-estimator unit + 51 e2e (mock upstream + real proxy)
+npm test          # 67 tests — 13 cache-estimator unit + 54 e2e (mock upstream + real proxy)
 ```
 
 ## Known limitations / TODO
