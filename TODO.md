@@ -27,7 +27,7 @@ Proxy watchdog: `scripts/watchdog-win.js` — auto-restarts proxy via tmux in WS
 - [ ] T129: Test Blueprint MCP — server fixed, needs Chrome extension reload
 - [ ] T130: Cost source-of-truth — proxy underestimates by ~30% vs RDSec. Main gap is missing calls (not going through proxy) + upstream not reporting cache tokens separately for Vertex AI models.
 - [ ] T136: Build gate to enforce "use mcp-manager for all MCP servers"
-- [ ] T140: Consider daily/weekly email digest using dashboard data + range API
+- [x] T140: Daily/weekly digest — `/api/digest?period=daily|weekly` returns styled HTML with spend stats, 7-day trend, model/project breakdown. Available on both proxy and tokentracker.click. Commit 553551e.
 
 ---
 
@@ -176,7 +176,7 @@ Proxy watchdog: `scripts/watchdog-win.js` — auto-restarts proxy via tmux in WS
 
 ## Medium (Testing & Docs)
 
-- [x] T126b: E2E test suite — `npm test` runs 25 tests via node:test. Mock upstream, real proxy process, real HTTP requests. Covers: health, diagnose, proxy pass-through, /ask L1/L2/L3, /judge L1/L2/L3, escalation polling, rate limits, stats, 404. All pass.
+- [x] T126b: E2E test suite — `npm test` runs 67 tests via node:test. Mock upstream, real proxy process, real HTTP requests. Covers: health, diagnose, proxy pass-through, /ask L1/L2/L3, /judge L1/L2/L3, escalation, rate limits, all API endpoints, export, digest, streaming SSE. All pass.
 - [x] T127: Docs audit — fixed auth section, added /v1/* proxy + /health + /diagnose docs, created `docs/escalation-flow.md`, added testing section to README.
 - [x] T128: Streaming SSE e2e test — 2 new tests (SSE forwarding + upstream error). Total: 27 tests pass.
 
