@@ -5,7 +5,8 @@
 Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `728b659`.
 65 tests passing. Schema v6 active. DB at `~/.token-proxy/usage.db`.
 tokentracker.click fully live — 7,545 rows, $695.07 (recalculated), sync every 5 min.
-Proxy watchdog: `scripts/watchdog-win.js` — auto-restarts proxy via tmux in WSL.
+Proxy watchdog: `scripts/watchdog-win.js` — auto-restarts proxy via tmux in WSL. Starts at login via Startup folder.
+Settings now route through proxy (`http://127.0.0.1:4100`). Switch script: `~/.claude/proxy/switch_llm_provider.py`.
 
 ### Completed this session (2026-05-10)
 - **Excel export** — `GET /api/export-excel` on both proxy and deploy server. XLSX with embedded bar chart.
@@ -25,7 +26,7 @@ Proxy watchdog: `scripts/watchdog-win.js` — auto-restarts proxy via tmux in WS
 ### Open priorities
 - [ ] T111: Pluggable storage backend (Postgres) for multi-host deployments
 - [ ] T129: Test Blueprint MCP — server fixed, needs Chrome extension reload
-- [ ] T130: Cost source-of-truth — proxy underestimates by ~30% vs RDSec. Main gap is missing calls (not going through proxy) + upstream not reporting cache tokens separately for Vertex AI models.
+- [x] T130: Cost source-of-truth — root cause: `ANTHROPIC_BASE_URL` was pointing directly to RDSec, bypassing proxy. Fixed: settings now route through `http://127.0.0.1:4100`. RDSec upstream URL fixed to include `/v1` (was stripping path). Remaining gap: Vertex AI models don't break out cache tokens separately — proxy can't fix what upstream doesn't report.
 - [ ] T136: Build gate to enforce "use mcp-manager for all MCP servers"
 - [x] T140: Daily/weekly digest — `/api/digest?period=daily|weekly` returns styled HTML with spend stats, 7-day trend, model/project breakdown. Available on both proxy and tokentracker.click. Commit 553551e.
 
