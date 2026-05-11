@@ -2,11 +2,12 @@
 
 ## Session State (2026-05-10)
 
-Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `728b659`.
-65 tests passing. Schema v6 active. DB at `~/.token-proxy/usage.db`.
-tokentracker.click fully live — 7,545 rows, $695.07 (recalculated), sync every 5 min.
-Proxy watchdog: `scripts/watchdog-win.js` — auto-restarts proxy via tmux in WSL. Starts at login via Startup folder.
-Settings now route through proxy (`http://127.0.0.1:4100`). Switch script: `~/.claude/proxy/switch_llm_provider.py`.
+Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `84163be`.
+67 tests passing. Schema v6 active. DB at `~/.token-proxy/usage.db`.
+tokentracker.click fully live — 7,658 rows, $703.67, sync every 5 min.
+Proxy watchdog: `scripts/watchdog-win.js` — auto-restarts proxy via tmux in WSL. Starts at login via Startup folder VBS.
+Settings route through proxy (`http://127.0.0.1:4100`). Switch script: `~/.claude/proxy/switch_llm_provider.py`.
+Untagged calls: 41/24h from hook system (openai-sdk consumer via /v1/chat/completions) — no X-Project header. Expected behavior, not a bug.
 
 ### Completed this session (2026-05-10)
 - **Excel export** — `GET /api/export-excel` on both proxy and deploy server. XLSX with embedded bar chart.
