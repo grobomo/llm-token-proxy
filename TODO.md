@@ -2,9 +2,9 @@
 
 ## Session State (2026-05-10)
 
-Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `84163be`.
-67 tests passing. Schema v6 active. DB at `~/.token-proxy/usage.db`.
-tokentracker.click fully live — 7,658 rows, $703.67, sync every 5 min.
+Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `569b7da`.
+67 tests passing (+ 27 health tests against live proxy). Schema v6 active. DB at `~/.token-proxy/usage.db`.
+tokentracker.click fully live — sync every 5 min. Digest, Excel export, uptime all deployed.
 Proxy watchdog: `scripts/watchdog-win.js` — auto-restarts proxy via tmux in WSL. Starts at login via Startup folder VBS.
 Settings route through proxy (`http://127.0.0.1:4100`). Switch script: `~/.claude/proxy/switch_llm_provider.py`.
 Untagged calls: 41/24h from hook system (openai-sdk consumer via /v1/chat/completions) — no X-Project header. Expected behavior, not a bug.
@@ -26,7 +26,7 @@ Untagged calls: 41/24h from hook system (openai-sdk consumer via /v1/chat/comple
 
 ### Open priorities
 - [ ] T111: Pluggable storage backend (Postgres) for multi-host deployments
-- [ ] T129: Test Blueprint MCP — server fixed, needs Chrome extension reload
+- [~] T129: Blueprint MCP — server starts (WSL node fix), extension connects intermittently (WebSocket drops after enable). Earlier this session, successfully took screenshots and extracted RDSec billing data. Needs debugging in blueprint-extra project.
 - [x] T130: Cost source-of-truth — root cause: `ANTHROPIC_BASE_URL` was pointing directly to RDSec, bypassing proxy. Fixed: settings now route through `http://127.0.0.1:4100`. RDSec upstream URL fixed to include `/v1` (was stripping path). Remaining gap: Vertex AI models don't break out cache tokens separately — proxy can't fix what upstream doesn't report.
 - [ ] T136: Build gate to enforce "use mcp-manager for all MCP servers"
 - [x] T140: Daily/weekly digest — `/api/digest?period=daily|weekly` returns styled HTML with spend stats, 7-day trend, model/project breakdown. Available on both proxy and tokentracker.click. Commit 553551e.
