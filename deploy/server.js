@@ -224,6 +224,82 @@ app.get('/api/judge-stats', (req, res) => {
   res.json({ by_gate: [], recent: [] });
 });
 
+// --- /api/digest — Styled HTML usage digest ---
+app.get('/api/digest', (req, res) => {
+  try {
+    const period = req.query.period === 'weekly' ? 'weekly' : 'daily';
+    const interval = period === 'weekly' ? '-7 days' : '-1 days';
+    const prevInterval = period === 'weekly' ? '-14 days' : '-2 days';
+    const label = period === 'weekly' ? 'Weekly' : 'Daily';
+
+    const current = query(`SELECT SUM(estimated_cost_usd) AS cost, COUNT(*) AS requests,
+      SUM(input_tokens) AS input_tok, SUM(output_tokens) AS output_tok,
+      SUM(cache_read_tokens) AS cache_r, SUM(cache_write_tokens) AS cache_w
+      FROM usage_log WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ','now','${interval}')`)[0] || {};
+    const prev = query(`SELECT SUM(estimated_cost_usd) AS cost FROM usage_log
+      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ','now','${prevInterval}')
+        AND timestamp < strftime('%Y-%m-%dT%H:%M:%fZ','now','${interval}')`)[0] || {};
+    const mtd = query(`SELECT SUM(estimated_cost_usd) AS cost FROM usage_log
+      WHERE timestamp >= strftime('%Y-%m-01T00:00:00Z','now')`)[0] || {};
+    const models = query(`SELECT model, SUM(estimated_cost_usd) AS cost, COUNT(*) AS requests
+      FROM usage_log WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ','now','${interval}')
+      GROUP BY model ORDER BY cost DESC LIMIT 5`);
+    const projects = query(`SELECT COALESCE(project,'untagged') AS project,
+      SUM(estimated_cost_usd) AS cost, COUNT(*) AS requests FROM usage_log
+      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ','now','${interval}')
+      GROUP BY project ORDER BY cost DESC LIMIT 8`);
+    const trend = query(`SELECT strftime('%m-%d',timestamp) AS day, SUM(estimated_cost_usd) AS cost
+      FROM usage_log WHERE timestamp >= strftime('%Y-%m-%dT00:00:00Z','now','-7 days')
+      GROUP BY day ORDER BY day ASC`);
+
+    const cost = current.cost || 0;
+    const prevCost = prev.cost || 0;
+    const change = prevCost > 0 ? ((cost - prevCost) / prevCost * 100) : 0;
+    const changeIcon = change > 5 ? '&#9650;' : change < -5 ? '&#9660;' : '&#8212;';
+    const changeColor = change > 5 ? '#e74c3c' : change < -5 ? '#27ae60' : '#7f8c8d';
+    const fmt = (v) => `$${(v||0).toFixed(2)}`;
+    const fmtK = (v) => v >= 1e6 ? `${(v/1e6).toFixed(1)}M` : v >= 1e3 ? `${(v/1e3).toFixed(0)}K` : String(v||0);
+    const maxTrend = Math.max(...trend.map(t => t.cost||0), 0.01);
+    const bars = trend.map(t => {
+      const pct = Math.round(((t.cost||0)/maxTrend)*100);
+      return `<div style="display:inline-block;width:28px;margin:0 1px;text-align:center;vertical-align:bottom">
+        <div style="background:#3498db;width:100%;height:${Math.max(pct,2)}px;border-radius:2px 2px 0 0"></div>
+        <div style="font-size:9px;color:#999">${t.day}</div></div>`;
+    }).join('');
+    const modelRows = models.map(m => `<tr><td style="padding:4px 8px;border-bottom:1px solid #eee">${m.model}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right">${fmt(m.cost)}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right">${m.requests}</td></tr>`).join('');
+    const projectRows = projects.map(p => `<tr><td style="padding:4px 8px;border-bottom:1px solid #eee">${p.project}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right">${fmt(p.cost)}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right">${p.requests}</td></tr>`).join('');
+    const dateStr = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+
+    res.set('Content-Type','text/html; charset=utf-8');
+    res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width"><title>Token Tracker ${label} Digest</title></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f4f4f4">
+<div style="max-width:600px;margin:20px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.1)">
+  <div style="background:linear-gradient(135deg,#2c3e50,#3498db);padding:24px 24px 16px;color:#fff">
+    <h1 style="margin:0;font-size:20px;font-weight:600">Token Tracker &mdash; ${label} Digest</h1>
+    <p style="margin:4px 0 0;opacity:.8;font-size:13px">${dateStr}</p></div>
+  <div style="padding:20px 24px">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
+      <div style="flex:1;min-width:120px;background:#f8f9fa;border-radius:6px;padding:12px;text-align:center">
+        <div style="font-size:24px;font-weight:700;color:#2c3e50">${fmt(cost)}</div>
+        <div style="font-size:11px;color:#7f8c8d;margin-top:2px">${label} Spend</div>
+        <div style="font-size:12px;color:${changeColor};margin-top:2px">${changeIcon} ${Math.abs(change).toFixed(0)}% vs prev</div></div>
+      <div style="flex:1;min-width:120px;background:#f8f9fa;border-radius:6px;padding:12px;text-align:center">
+        <div style="font-size:24px;font-weight:700;color:#2c3e50">${current.requests||0}</div>
+        <div style="font-size:11px;color:#7f8c8d;margin-top:2px">Requests</div></div>
+      <div style="flex:1;min-width:120px;background:#f8f9fa;border-radius:6px;padding:12px;text-align:center">
+        <div style="font-size:24px;font-weight:700;color:#2c3e50">${fmt(mtd.cost)}</div>
+        <div style="font-size:11px;color:#7f8c8d;margin-top:2px">MTD Spend</div></div></div>
+    <div style="margin-bottom:20px"><h3 style="font-size:13px;color:#7f8c8d;text-transform:uppercase;letter-spacing:.5px;margin:0 0 8px">7-Day Trend</h3><div style="height:80px;display:flex;align-items:flex-end">${bars}</div></div>
+    <div style="margin-bottom:20px"><h3 style="font-size:13px;color:#7f8c8d;text-transform:uppercase;letter-spacing:.5px;margin:0 0 8px">Tokens</h3><div style="font-size:13px;color:#555">Input: <strong>${fmtK(current.input_tok)}</strong> &middot; Output: <strong>${fmtK(current.output_tok)}</strong> &middot; Cache Read: <strong>${fmtK(current.cache_r)}</strong> &middot; Cache Write: <strong>${fmtK(current.cache_w)}</strong></div></div>
+    ${modelRows?`<div style="margin-bottom:20px"><h3 style="font-size:13px;color:#7f8c8d;text-transform:uppercase;letter-spacing:.5px;margin:0 0 8px">Top Models</h3><table style="width:100%;border-collapse:collapse;font-size:13px"><tr style="color:#7f8c8d;font-size:11px"><th style="text-align:left;padding:4px 8px">Model</th><th style="text-align:right;padding:4px 8px">Cost</th><th style="text-align:right;padding:4px 8px">Reqs</th></tr>${modelRows}</table></div>`:''}
+    ${projectRows?`<div style="margin-bottom:20px"><h3 style="font-size:13px;color:#7f8c8d;text-transform:uppercase;letter-spacing:.5px;margin:0 0 8px">Top Projects</h3><table style="width:100%;border-collapse:collapse;font-size:13px"><tr style="color:#7f8c8d;font-size:11px"><th style="text-align:left;padding:4px 8px">Project</th><th style="text-align:right;padding:4px 8px">Cost</th><th style="text-align:right;padding:4px 8px">Reqs</th></tr>${projectRows}</table></div>`:''}</div>
+  <div style="padding:12px 24px;background:#f8f9fa;font-size:11px;color:#999;text-align:center;border-top:1px solid #eee">Generated by <a href="/dashboard" style="color:#3498db;text-decoration:none">Token Tracker</a></div>
+</div></body></html>`);
+  } catch (err) {
+    res.status(500).json({ error: 'internal_error', message: err.message });
+  }
+});
+
 app.get('/api/db-stats', (req, res) => {
   const stats = query(`
     SELECT COUNT(*) AS rows,
@@ -342,6 +418,7 @@ app.get('/api/', (req, res) => {
       { method: 'GET', path: '/api/sessions', description: 'Per-session cost analytics', params: ['range=1h|6h|12h|24h|7d|30d', 'limit=<n>'] },
       { method: 'GET', path: '/api/cache-estimation', description: 'Cache estimation stats', params: ['range=1h|6h|12h|24h|7d|30d'] },
       { method: 'GET', path: '/api/judge-stats', description: 'Judge decision stats' },
+      { method: 'GET', path: '/api/digest', description: 'Styled HTML email digest of usage', params: ['period=daily|weekly'] },
       { method: 'GET', path: '/api/db-stats', description: 'Database stats: row count, date range, total cost' },
       { method: 'GET', path: '/api/uptime', description: 'Server uptime and 24h success rate' },
       { method: 'GET', path: '/api/export', description: 'Download usage data as CSV', params: ['range=1h|6h|12h|24h|7d|30d'] },
