@@ -25,8 +25,8 @@ Untagged calls: 41/24h from hook system (openai-sdk consumer via /v1/chat/comple
 - **Watchdog** — `scripts/watchdog-win.js` — Windows-native proxy auto-restart via tmux. T001 complete.
 
 ### Open priorities
-- [ ] T111: Pluggable storage backend (Postgres) for multi-host deployments
-- [~] T129: Blueprint MCP — server starts (WSL node fix), extension connects intermittently (WebSocket drops after enable). Earlier this session, successfully took screenshots and extracted RDSec billing data. Needs debugging in blueprint-extra project.
+- [ ] T111: Pluggable storage backend — `lib/storage/` facade synced to schema v6 (cache_estimated + run()). Remaining: wire facade into proxy.js + dashboard/api.js.
+- [~] T129: Blueprint MCP — server starts (WSL node fix), extension connects intermittently. Needs debugging in blueprint-extra project.
 - [x] T130: Cost source-of-truth — root cause: `ANTHROPIC_BASE_URL` was pointing directly to RDSec, bypassing proxy. Fixed: settings now route through `http://127.0.0.1:4100`. RDSec upstream URL fixed to include `/v1` (was stripping path). Remaining gap: Vertex AI models don't break out cache tokens separately — proxy can't fix what upstream doesn't report.
 - [ ] T136: Build gate to enforce "use mcp-manager for all MCP servers"
 - [x] T140: Daily/weekly digest — `/api/digest?period=daily|weekly` returns styled HTML with spend stats, 7-day trend, model/project breakdown. Available on both proxy and tokentracker.click. Commit 553551e.
