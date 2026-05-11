@@ -278,6 +278,7 @@
   <span class="total" id="last-refresh" style="font-size:11px"></span>
   <button id="export-btn" title="Export CSV" style="background:var(--bg);color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:12px;cursor:pointer" onclick="exportCSV()">CSV</button>
   <button title="Export Excel with chart" style="background:var(--bg);color:var(--accent);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:12px;cursor:pointer;font-weight:600" onclick="exportExcel()">Excel</button>
+  <button title="Email digest" style="background:var(--bg);color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:12px;cursor:pointer" onclick="window.open('/api/digest?period=daily','_blank')">Digest</button>
 </header>
 
 <div class="health-bar" id="health-bar">
