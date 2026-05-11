@@ -757,6 +757,25 @@ describe('E2E: Token Proxy', { timeout: 60000 }, () => {
   // Database stats & API index
   // =========================================================================
 
+  describe('/api/digest', () => {
+    it('returns HTML daily digest', async () => {
+      const res = await fetch(`${BASE}/api/digest?period=daily`);
+      assert.equal(res.status, 200);
+      assert.ok(res.headers.get('content-type').includes('text/html'));
+      const html = await res.text();
+      assert.ok(html.includes('Token Tracker'));
+      assert.ok(html.includes('Daily Digest'));
+      assert.ok(html.includes('MTD Spend'));
+    });
+
+    it('returns weekly digest when period=weekly', async () => {
+      const res = await fetch(`${BASE}/api/digest?period=weekly`);
+      assert.equal(res.status, 200);
+      const html = await res.text();
+      assert.ok(html.includes('Weekly Digest'));
+    });
+  });
+
   describe('/api/db-stats', () => {
     it('returns database statistics', async () => {
       const { status, json } = await req('GET', '/api/db-stats');

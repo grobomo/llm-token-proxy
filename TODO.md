@@ -2,9 +2,10 @@
 
 ## Session State (2026-05-10)
 
-Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `4e501d0`.
+Published to https://github.com/grobomo/llm-token-proxy (public). All commits pushed through `728b659`.
 65 tests passing. Schema v6 active. DB at `~/.token-proxy/usage.db`.
 tokentracker.click fully live — 7,545 rows, $695.07 (recalculated), sync every 5 min.
+Proxy watchdog: `scripts/watchdog-win.js` — auto-restarts proxy via tmux in WSL.
 
 ### Completed this session (2026-05-10)
 - **Excel export** — `GET /api/export-excel` on both proxy and deploy server. XLSX with embedded bar chart.
@@ -19,6 +20,7 @@ tokentracker.click fully live — 7,545 rows, $695.07 (recalculated), sync every
 - **Pricing config** — added all AWS/dated model variants.
 - **Security** — filename sanitization, Secure cookie, .gitignore cleanup.
 - **Test stability** — increased timeouts for WSL startup latency + exceljs cold-start.
+- **Watchdog** — `scripts/watchdog-win.js` — Windows-native proxy auto-restart via tmux. T001 complete.
 
 ### Open priorities
 - [ ] T111: Pluggable storage backend (Postgres) for multi-host deployments
@@ -179,5 +181,5 @@ tokentracker.click fully live — 7,545 rows, $695.07 (recalculated), sync every
 - [x] T128: Streaming SSE e2e test — 2 new tests (SSE forwarding + upstream error). Total: 27 tests pass.
 
 ## Open Tasks
-- [ ] T001: Proxy watchdog service — runs at Windows login via Task Scheduler. Pings :4100/health every 30s. If proxy down: restart it. If stays down after 3 retries: revert settings.json to known-good backup (no proxy, direct Anthropic). If proxy recovers: re-enable proxy in settings.json. Backs up settings.json with timestamp before every change. Restores from most recent backup when haiku health check fails.
-- [ ] T002: Expose /ask endpoint — simpler than /v1/chat/completions for hook gate calls. Takes {prompt, caller, jsonMode, maxTokens}. Returns {ok, content, parsed, ms}. Removes need for OpenAI-compatible wrapper in haiku-client.js.
+- [x] T001: Proxy watchdog service — `scripts/watchdog-win.js`. Node.js persistent process, checks health every 30s, auto-restarts proxy in WSL tmux after 3 failures. Supports `--install` (Task Scheduler), `--status`, `--remove`. Commit 728b659.
+- [x] T002: Expose /ask endpoint — completed as part of T125 (tiered LLM endpoints). `/ask`, `/ask/l2`, `/ask/l3` all implemented.
