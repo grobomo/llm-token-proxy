@@ -98,16 +98,28 @@ function generateHourlyBreakdown(db, interval, range) {
     WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
     GROUP BY bucket, model ORDER BY bucket, cost DESC
   `);
+  const effortRows = query(db, `
+    SELECT strftime('${bucketFmt}', timestamp) AS bucket,
+           COALESCE(effort_level, 'unknown') AS effort,
+           SUM(estimated_cost_usd) AS cost, COUNT(*) AS calls
+    FROM usage_log
+    WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
+    GROUP BY bucket, effort ORDER BY bucket
+  `);
   const bucketMap = {};
   for (const r of projectRows) {
-    if (!bucketMap[r.bucket]) bucketMap[r.bucket] = { hour: r.bucket, total_cost: 0, total_calls: 0, projects: [], models: [] };
+    if (!bucketMap[r.bucket]) bucketMap[r.bucket] = { hour: r.bucket, total_cost: 0, total_calls: 0, projects: [], models: [], effort: [] };
     bucketMap[r.bucket].total_cost += r.cost || 0;
     bucketMap[r.bucket].total_calls += r.calls || 0;
     bucketMap[r.bucket].projects.push({ project: r.project, cost: parseFloat((r.cost || 0).toFixed(4)), calls: r.calls });
   }
   for (const r of modelRows) {
-    if (!bucketMap[r.bucket]) bucketMap[r.bucket] = { hour: r.bucket, total_cost: 0, total_calls: 0, projects: [], models: [] };
+    if (!bucketMap[r.bucket]) bucketMap[r.bucket] = { hour: r.bucket, total_cost: 0, total_calls: 0, projects: [], models: [], effort: [] };
     bucketMap[r.bucket].models.push({ model: r.model, cost: parseFloat((r.cost || 0).toFixed(4)), calls: r.calls });
+  }
+  for (const r of effortRows) {
+    if (!bucketMap[r.bucket]) bucketMap[r.bucket] = { hour: r.bucket, total_cost: 0, total_calls: 0, projects: [], models: [], effort: [] };
+    bucketMap[r.bucket].effort.push({ level: r.effort, cost: parseFloat((r.cost || 0).toFixed(4)), calls: r.calls });
   }
 
   // Fill all time slots including zeros
@@ -128,7 +140,7 @@ function generateHourlyBreakdown(db, interval, range) {
   }
 
   const filled = allSlots.map(slot =>
-    bucketMap[slot] || { hour: slot, total_cost: 0, total_calls: 0, projects: [], models: [] }
+    bucketMap[slot] || { hour: slot, total_cost: 0, total_calls: 0, projects: [], models: [], effort: [] }
   );
 
   return { hours: filled, granularity: useDaily ? 'daily' : 'hourly' };

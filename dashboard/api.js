@@ -327,6 +327,18 @@ router.get('/hourly-breakdown', (req, res) => {
       ORDER BY ${bucketCol}, cost DESC
     `);
 
+    const effortRows = db.query(`
+      SELECT
+        strftime('${bucketFmt}', timestamp) AS ${bucketCol},
+        COALESCE(effort_level, 'unknown') AS effort,
+        SUM(estimated_cost_usd) AS cost,
+        COUNT(*) AS calls
+      FROM usage_log
+      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
+      GROUP BY ${bucketCol}, effort
+      ORDER BY ${bucketCol}
+    `);
+
     const bucketMap = {};
     const bucketProjectMap = {};
     for (const r of projectRows) {
@@ -347,8 +359,13 @@ router.get('/hourly-breakdown', (req, res) => {
       p.models.sort((a, b) => b.cost - a.cost);
     }
     for (const r of modelRows) {
-      if (!bucketMap[r.bucket]) bucketMap[r.bucket] = { hour: r.bucket, total_cost: 0, total_calls: 0, projects: [], models: [] };
+      if (!bucketMap[r.bucket]) bucketMap[r.bucket] = { hour: r.bucket, total_cost: 0, total_calls: 0, projects: [], models: [], effort: [] };
       bucketMap[r.bucket].models.push({ model: r.model, upstream: r.upstream, cost: parseFloat((r.cost || 0).toFixed(4)), calls: r.calls });
+    }
+    for (const r of effortRows) {
+      if (!bucketMap[r.bucket]) bucketMap[r.bucket] = { hour: r.bucket, total_cost: 0, total_calls: 0, projects: [], models: [], effort: [] };
+      if (!bucketMap[r.bucket].effort) bucketMap[r.bucket].effort = [];
+      bucketMap[r.bucket].effort.push({ level: r.effort, cost: parseFloat((r.cost || 0).toFixed(4)), calls: r.calls });
     }
 
     // Generate all time slots in the range (fill gaps with zeros)
@@ -371,7 +388,7 @@ router.get('/hourly-breakdown', (req, res) => {
     }
 
     const filled = allSlots.map(slot => {
-      return bucketMap[slot] || { hour: slot, total_cost: 0, total_calls: 0, projects: [], models: [] };
+      return bucketMap[slot] || { hour: slot, total_cost: 0, total_calls: 0, projects: [], models: [], effort: [] };
     });
 
     res.json({ hours: filled, granularity: useDaily ? 'daily' : 'hourly' });
@@ -1222,75 +1239,108 @@ router.post('/investigations/:id/fix', (req, res) => {
 
 // ---------------------------------------------------------------------------
 // GET /api/fleet
-// Active Claude Code sessions from ~/.claude/fleet/sessions/*.json,
-// enriched with cost data from the usage DB.
+// Active Claude Code sessions from ~/.claude/sessions/*.json (native) +
+// ~/.claude/fleet/sessions/*.json (custom fleet), enriched with cost data.
+// Uses PID liveness to determine actual status.
 // ---------------------------------------------------------------------------
 router.get('/fleet', (req, res) => {
   res.set('X-Cache', 'BYPASS');
   try {
     const homeDir = process.env.HOME || process.env.USERPROFILE || '';
-    const sessionsDir = path.join(homeDir, '.claude', 'fleet', 'sessions');
-
-    let files = [];
-    try {
-      files = fs.readdirSync(sessionsDir).filter(f => f.endsWith('.json'));
-    } catch {
-      return res.json({ sessions: [], error: 'fleet sessions directory not found' });
-    }
-
+    const nativeDir = path.join(homeDir, '.claude', 'sessions');
+    const fleetDir = path.join(homeDir, '.claude', 'fleet', 'sessions');
     const now = Date.now();
     const sessions = [];
+    const seenPids = new Set();
 
-    for (const file of files) {
-      try {
-        const raw = fs.readFileSync(path.join(sessionsDir, file), 'utf8');
-        const s = JSON.parse(raw);
-
-        const lastCheckin = s.last_checkin ? new Date(s.last_checkin).getTime() : 0;
-        const startedAt = s.started_at ? new Date(s.started_at).getTime() : 0;
-        const ageMs = now - lastCheckin;
-        const ageMin = Math.round(ageMs / 60000);
-
-        let status = 'active';
-        if (ageMs > 30 * 60000) status = 'stale';
-        else if (ageMs > 15 * 60000) status = 'inactive';
-
-        let cost24h = null;
-        const projectName = s.project || null;
-        if (projectName) {
-          try {
-            const safeName = projectName.replace(/[^a-zA-Z0-9_-]/g, '');
-            if (safeName) {
-              const costRow = db.query(
-                `SELECT SUM(estimated_cost_usd) AS cost, COUNT(*) AS calls
-                 FROM usage_log
-                 WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
-                   AND project LIKE '%${safeName}%'`
-              );
-              if (costRow[0] && costRow[0].cost) {
-                cost24h = { cost: parseFloat(costRow[0].cost.toFixed(4)), calls: costRow[0].calls };
-              }
-            }
-          } catch {}
-        }
-
-        sessions.push({
-          file,
-          session_id: s.session_id || file.replace('.json', ''),
-          project: projectName,
-          cwd: s.cwd || null,
-          model: s.model || null,
-          current_task: s.current_task || null,
-          started_at: s.started_at || null,
-          last_checkin: s.last_checkin || null,
-          status,
-          age_min: ageMin,
-          cost_24h: cost24h,
-        });
-      } catch {}
+    function isPidAlive(pid) {
+      try { process.kill(pid, 0); return true; } catch { return false; }
     }
 
-    sessions.sort((a, b) => (b.last_checkin || '').localeCompare(a.last_checkin || ''));
+    function enrichCost(projectName) {
+      if (!projectName) return null;
+      try {
+        const safeName = projectName.replace(/[^a-zA-Z0-9_-]/g, '');
+        if (!safeName) return null;
+        const costRow = db.query(
+          `SELECT SUM(estimated_cost_usd) AS cost, COUNT(*) AS calls
+           FROM usage_log
+           WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+             AND project LIKE '%${safeName}%'`
+        );
+        if (costRow[0] && costRow[0].cost) {
+          return { cost: parseFloat(costRow[0].cost.toFixed(4)), calls: costRow[0].calls };
+        }
+      } catch {}
+      return null;
+    }
+
+    // Read native Claude Code sessions (PID-based liveness)
+    try {
+      const files = fs.readdirSync(nativeDir).filter(f => f.endsWith('.json'));
+      for (const file of files) {
+        try {
+          const raw = fs.readFileSync(path.join(nativeDir, file), 'utf8');
+          const s = JSON.parse(raw);
+          const pid = s.pid;
+          if (!pid || !isPidAlive(pid)) continue;
+          seenPids.add(pid);
+
+          const project = s.cwd ? s.cwd.split('/').pop() : null;
+          sessions.push({
+            file,
+            session_id: s.sessionId || file.replace('.json', ''),
+            project,
+            cwd: s.cwd || null,
+            model: s.model || null,
+            current_task: s.current_task || s.status || null,
+            started_at: s.started_at || null,
+            last_checkin: s.last_checkin || new Date(fs.statSync(path.join(nativeDir, file)).mtime).toISOString(),
+            status: 'active',
+            age_min: 0,
+            cost_24h: enrichCost(project),
+          });
+        } catch {}
+      }
+    } catch {}
+
+    // Read custom fleet sessions (fallback for sessions not in native dir)
+    try {
+      const files = fs.readdirSync(fleetDir).filter(f => f.endsWith('.json'));
+      for (const file of files) {
+        try {
+          const raw = fs.readFileSync(path.join(fleetDir, file), 'utf8');
+          const s = JSON.parse(raw);
+          if (s.pid && seenPids.has(s.pid)) continue;
+
+          const lastCheckin = s.last_checkin ? new Date(s.last_checkin).getTime() : 0;
+          const ageMs = now - lastCheckin;
+          const ageMin = Math.round(ageMs / 60000);
+          let status = 'active';
+          if (ageMs > 30 * 60000) status = 'stale';
+          else if (ageMs > 15 * 60000) status = 'inactive';
+
+          sessions.push({
+            file,
+            session_id: s.session_id || file.replace('.json', ''),
+            project: s.project || null,
+            cwd: s.cwd || null,
+            model: s.model || null,
+            current_task: s.current_task || null,
+            started_at: s.started_at || null,
+            last_checkin: s.last_checkin || null,
+            status,
+            age_min: ageMin,
+            cost_24h: enrichCost(s.project),
+          });
+        } catch {}
+      }
+    } catch {}
+
+    sessions.sort((a, b) => {
+      const order = { active: 0, inactive: 1, stale: 2 };
+      return (order[a.status] || 9) - (order[b.status] || 9);
+    });
 
     res.json({
       sessions,

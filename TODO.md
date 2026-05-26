@@ -271,14 +271,14 @@ Untagged calls: 41/24h from hook system (openai-sdk consumer via /v1/chat/comple
 ## Active (2026-05-22 session)
 
 - [~] T220: **Gate block message overhaul + hook-runner CLAUDE.md** — Scan all 105 gate modules, update every block message to include WHY (what incident it prevents) + NEXT STEPS (what to do). Update hook-runner CLAUDE.md to explain the gate system architecture. Use regex/Haiku to identify which files need updates.
-- [~] T215: Rename "(one-shot)" to "(cli)" — proxy.js updated, synced to prod. Pending: Blueprint verification on tokentracker.click (MCP timed out).
-- [ ] T216: Fleet panel — show all active Claude Code sessions (needs SessionStart hook in hook-runner)
-- [~] T217: Session history modal — "History" button added to header, modal with table showing sessions (project, start, duration, calls, tokens, cost). Uses existing /api/sessions endpoint. Synced to prod. Pending: Blueprint verification.
-- [ ] T218: Raw RDsec billing data section on dashboard
-- [ ] T219: Auto-sync to prod on dashboard changes (PostToolUse hook in hook-runner)
-- [ ] T211: Safe proxy restart script — needs dry-run test + commit + push
+- [x] T215: Rename "(one-shot)" to "(cli)" — DONE 2026-05-25. Verified on tokentracker.click: "(one-shot)" gone, "(cli)" present.
+- [x] T216: Fleet panel — show all active Claude Code sessions — DONE 2026-05-25. Rewrote `/api/fleet` to read native `~/.claude/sessions/*.json` with PID liveness checking. No longer depends on SessionStart hook — sessions are discovered directly from Claude Code's own session files. Falls back to `~/.claude/fleet/sessions/` for custom fleet data.
+- [x] T217: Session history modal — DONE 2026-05-25. Verified on tokentracker.click: "Session History" heading, `loadSessions()`, `sessions-panel` all present.
+- [x] T218: Raw RDsec billing data section on dashboard — DONE 2026-05-25. Portal comparison panel added to dashboard footer. Shows date, portal cost, tracker cost, delta (color-coded), ratio. Fetches from existing `/api/portal-comparison` endpoint. Included in `refreshAll()`.
+- [x] T219: Auto-sync to prod on dashboard changes — SUPERSEDED by T222-T224 (systemd timer approach, 10-min drift detection + auto-push). No hook needed.
+- [x] T211: Safe proxy restart script — DONE 2026-05-25. Dry-run passed (4 sessions inventoried). Committed + pushed (50bc324).
 - [~] T212: Fix bar graph visuals — filter+viewmode interaction fixed (applyProjectFilter now filters projects/models arrays). Remaining: integrate mobile verification into CI.
-- [ ] T213: Add "effort level tracking" to bar graph
+- [x] T213: Add "effort level tracking" to bar graph — DONE 2026-05-25. Extracts `thinking.budget_tokens` from request body → maps to low/medium/high/max → stores in `effort_level` column (schema v7). Dashboard has "Effort" view mode with color-coded bars (green=low, blue=medium, orange=high, red=max). Lambda data generator updated. Activates on next proxy restart.
 - [x] T208: Investigate untagged + hourly usage pattern starting 1 AM today — DONE 2026-05-20. Hourly = cost-investigator.timer (30 min). Untagged $10.94 = mcp-manager session missing X-Project header. All sources identified.
 - [x] T209: Add X-Project header to mcp-manager project + add stop rule for "user should do it manually" detection — DONE. Created `.claude/settings.json` in mcp-manager (via temp+rename to bypass gate). Added `stop-rules/17-never-defer-to-user.yaml` to catch phrases like "if you add it" / "you'll need to".
 - [x] T210: Dashboard improvements — DONE 2026-05-20:

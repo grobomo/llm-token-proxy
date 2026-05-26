@@ -366,6 +366,7 @@
       <label style="cursor:pointer;padding:8px 4px;min-height:44px;display:inline-flex;align-items:center;gap:4px"><input type="radio" name="chart-view" value="project" checked onchange="onChartViewChange()" style="width:18px;height:18px"> Project</label>
       <label style="cursor:pointer;padding:8px 4px;min-height:44px;display:inline-flex;align-items:center;gap:4px"><input type="radio" name="chart-view" value="model" onchange="onChartViewChange()" style="width:18px;height:18px"> Model</label>
       <label style="cursor:pointer;padding:8px 4px;min-height:44px;display:inline-flex;align-items:center;gap:4px"><input type="radio" name="chart-view" value="both" onchange="onChartViewChange()" style="width:18px;height:18px"> Both</label>
+      <label style="cursor:pointer;padding:8px 4px;min-height:44px;display:inline-flex;align-items:center;gap:4px"><input type="radio" name="chart-view" value="effort" onchange="onChartViewChange()" style="width:18px;height:18px"> Effort</label>
     </div>
     <select id="project-filter" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:12px;cursor:pointer" onchange="applyProjectFilter()">
       <option value="">All projects</option>
@@ -424,6 +425,13 @@
   <div class="breakdown-card" style="grid-column: span 2">
     <h3 class="range-label">Judge decisions — 24h</h3>
     <div id="judge-panel"></div>
+  </div>
+</div>
+
+<div class="breakdown">
+  <div class="breakdown-card" style="grid-column: span 2">
+    <h3>Portal vs Tracker — daily comparison</h3>
+    <div id="portal-panel"></div>
   </div>
 </div>
 
@@ -510,6 +518,7 @@ function onChartViewChange() {
 
 const projectColors = {};
 const projectPalette = ['#4fc3f7','#81c784','#ffb74d','#e57373','#ba68c8','#4db6ac','#fff176','#f06292','#90a4ae','#aed581','#7986cb','#ff8a65'];
+const effortColors = { low: '#81c784', medium: '#4fc3f7', high: '#ffb74d', max: '#e57373', unknown: '#90a4ae' };
 function getProjectColor(name) {
   if (!projectColors[name]) {
     const idx = Object.keys(projectColors).length % projectPalette.length;
@@ -621,6 +630,7 @@ function renderChart(data, projectLabel) {
     const projects = (h.projects || []).sort((a, b) => b.cost - a.cost);
 
     let segments = '';
+    const efforts = (h.effort || []).sort((a, b) => b.cost - a.cost);
     if (viewMode === 'model') {
       segments = models.map(m => {
         const segPct = h.total_cost > 0 ? (m.cost / h.total_cost) * 100 : 0;
@@ -630,6 +640,11 @@ function renderChart(data, projectLabel) {
       segments = projects.map(p => {
         const segPct = h.total_cost > 0 ? (p.cost / h.total_cost) * 100 : 0;
         return `<div class="bar-segment" style="height:${segPct}%;background:${getProjectColor(p.project)}"></div>`;
+      }).join('');
+    } else if (viewMode === 'effort') {
+      segments = efforts.map(e => {
+        const segPct = h.total_cost > 0 ? (e.cost / h.total_cost) * 100 : 0;
+        return `<div class="bar-segment" style="height:${segPct}%;background:${effortColors[e.level] || effortColors.unknown}"></div>`;
       }).join('');
     } else {
       segments = projects.map(p => {
@@ -650,6 +665,14 @@ function renderChart(data, projectLabel) {
           <div class="legend-dot" style="background:${modelColors[m.model] || 'var(--accent)'}"></div>
           <span>${shortModel(m.model, m.upstream)}</span>
           <span class="legend-cost">${fmtCost(m.cost)}</span>
+        </div>
+      `).join('');
+    } else if (viewMode === 'effort') {
+      legend = efforts.map(e => `
+        <div class="legend-item">
+          <div class="legend-dot" style="background:${effortColors[e.level] || effortColors.unknown}"></div>
+          <span>${e.level}</span>
+          <span class="legend-cost">${fmtCost(e.cost)} (${e.calls})</span>
         </div>
       `).join('');
     } else if (viewMode === 'project') {
@@ -1195,6 +1218,38 @@ async function loadSessions() {
   } catch { el.innerHTML = '<div class="empty-state" style="padding:12px">—</div>'; }
 }
 
+async function loadPortalComparison() {
+  const el = document.getElementById('portal-panel');
+  try {
+    const r = await fetch(STATIC_MODE ? '/data/portal-comparison.json' : '/api/portal-comparison');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if (d.error) { el.innerHTML = `<div class="empty-state" style="padding:12px">${esc(d.message)}</div>`; return; }
+    const rows = d.comparison || [];
+    if (rows.length === 0) { el.innerHTML = '<div class="empty-state" style="padding:12px">No matched days</div>'; return; }
+
+    const header = `<div style="display:flex;gap:4px;padding:4px 0;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid var(--border);margin-bottom:4px">
+      <span style="width:80px">Date</span>
+      <span style="width:75px;text-align:right">Portal</span>
+      <span style="width:75px;text-align:right">Tracker</span>
+      <span style="width:65px;text-align:right">Delta</span>
+      <span style="width:55px;text-align:right">Ratio</span>
+    </div>`;
+    const body = rows.map(r => {
+      const deltaColor = Math.abs(r.delta) < 5 ? 'var(--green)' : Math.abs(r.delta) < 20 ? 'var(--yellow)' : 'var(--red)';
+      return `<div style="display:flex;gap:4px;padding:3px 0;font-size:12px;border-bottom:1px solid var(--border)">
+        <span style="width:80px;font-family:monospace;font-size:11px">${esc(r.date)}</span>
+        <span style="width:75px;text-align:right">${fmtCost(r.portal_cost)}</span>
+        <span style="width:75px;text-align:right">${fmtCost(r.tracker_cost)}</span>
+        <span style="width:65px;text-align:right;color:${deltaColor}">${r.delta > 0 ? '+' : ''}$${r.delta.toFixed(2)}</span>
+        <span style="width:55px;text-align:right;color:var(--muted)">${r.ratio ? r.ratio.toFixed(2) + 'x' : '—'}</span>
+      </div>`;
+    }).join('');
+    const footer = `<div style="font-size:10px;color:var(--muted);margin-top:6px">Data pulled: ${d.last_pulled ? new Date(d.last_pulled).toLocaleDateString() : '—'}</div>`;
+    el.innerHTML = header + body + footer;
+  } catch { el.innerHTML = '<div class="empty-state" style="padding:12px">—</div>'; }
+}
+
 function refreshAll() {
   const rl = rangeLabel();
   document.getElementById('chart-label').textContent = `Spend — last ${rl}`;
@@ -1202,7 +1257,7 @@ function refreshAll() {
     el.textContent = el.textContent.replace(/—\s*.*$/, `— ${rl}`);
   });
   document.body.classList.add('loading');
-  Promise.all([load(), loadBreakdown(), loadSavings(), loadProjectCosts(), loadSessions()])
+  Promise.all([load(), loadBreakdown(), loadSavings(), loadProjectCosts(), loadSessions(), loadPortalComparison()])
     .finally(() => {
       document.body.classList.remove('loading');
       document.getElementById('last-refresh').textContent = 'updated ' + new Date().toLocaleTimeString();

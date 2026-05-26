@@ -625,6 +625,7 @@ app.all('/v1/*', async (req, res) => {
   const userAgent  = req.headers['user-agent'] ? String(req.headers['user-agent']).slice(0, 256) : null;
   const callerCwd  = req.headers['x-caller-cwd'] ? String(req.headers['x-caller-cwd']).slice(0, 512) : null;
   let   promptPreview = null;
+  let   effortLevel   = null;
 
   if (!project) {
     if (['ask-l1', 'ask-l2', 'ask-l3', 'judge-l1', 'judge-l2', 'judge-l3'].includes(consumer)) {
@@ -677,6 +678,14 @@ app.all('/v1/*', async (req, res) => {
       model       = parsed.model   || 'unknown';
       isStreaming  = Boolean(parsed.stream);
       messageCount = Array.isArray(parsed.messages) ? parsed.messages.length : 0;
+
+      if (parsed.thinking && parsed.thinking.budget_tokens) {
+        const budget = parsed.thinking.budget_tokens;
+        if (budget <= 4096)       effortLevel = 'low';
+        else if (budget <= 16000) effortLevel = 'medium';
+        else if (budget <= 50000) effortLevel = 'high';
+        else                      effortLevel = 'max';
+      }
 
       if (Array.isArray(parsed.messages) && parsed.messages.length > 0) {
         const lastUser = [...parsed.messages].reverse().find(m => m.role === 'user');
@@ -904,7 +913,7 @@ app.all('/v1/*', async (req, res) => {
         duration_ms:        duration,
         http_status:        httpStatus,
         project, task, user_agent: userAgent, session_id: sessionId, original_model: originalModel,
-        cache_estimated:    cacheEstimated,
+        cache_estimated:    cacheEstimated, effort_level: effortLevel,
       });
       log('info', `[SSE done] consumer=${consumer} model=${model} upstream=${upstreamName} in=${estimatedUsage.input_tokens} out=${estimatedUsage.output_tokens} cache_r=${estimatedUsage.cache_read_input_tokens || 0} cache_w=${estimatedUsage.cache_creation_input_tokens || 0}${cacheEstimated ? ' (est)' : ''} cost=$${finalCost}${litellmCost != null && Math.abs(cost - litellmCost) > 0.001 ? ` (est=$${cost})` : ''} dur=${duration}ms`);
     } else {
@@ -918,6 +927,7 @@ app.all('/v1/*', async (req, res) => {
         duration_ms: duration,
         http_status: httpStatus,
         project, task, user_agent: userAgent, session_id: sessionId, original_model: originalModel,
+        effort_level: effortLevel,
       });
       if (fallbackCost > 0) {
         log('info', `[SSE done] consumer=${consumer} model=${model} upstream=${upstreamName} cost=$${fallbackCost} (from x-litellm-response-cost header) dur=${duration}ms`);
@@ -992,7 +1002,7 @@ app.all('/v1/*', async (req, res) => {
       duration_ms:        duration,
       http_status:        httpStatus,
       project, task, user_agent: userAgent, session_id: sessionId, original_model: originalModel,
-      cache_estimated:    cacheEstimated,
+      cache_estimated:    cacheEstimated, effort_level: effortLevel,
       caller_cwd: callerCwd, prompt_preview: promptPreview,
     });
     log('info', `[done] consumer=${consumer} model=${model} upstream=${upstreamName} in=${estimatedUsage.input_tokens} out=${estimatedUsage.output_tokens} cache_r=${estimatedUsage.cache_read_input_tokens || 0} cache_w=${estimatedUsage.cache_creation_input_tokens || 0}${cacheEstimated ? ' (est)' : ''} cost=$${finalCost}${litellmCost != null && Math.abs(cost - litellmCost) > 0.001 ? ` (est=$${cost})` : ''} dur=${duration}ms`);
@@ -1006,6 +1016,7 @@ app.all('/v1/*', async (req, res) => {
       duration_ms: duration,
       http_status: httpStatus,
       project, task, user_agent: userAgent, session_id: sessionId, original_model: originalModel,
+      effort_level: effortLevel,
       caller_cwd: callerCwd, prompt_preview: promptPreview,
     });
     if (httpStatus >= 200 && httpStatus < 300) {
