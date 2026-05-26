@@ -44,6 +44,19 @@ pricing:
   claude-haiku-4-5-20251001:   { input:  1.00, output:  5.00, cache_read: 0.10, cache_write:  1.25 }
   default:                     { input:  3.00, output: 15.00, cache_read: 0.30, cache_write:  3.75 }
 
+# --- Per-upstream pricing overrides ---
+# If an upstream (e.g. RDsec/Trend Micro gateway) charges different rates
+# than Anthropic's published pricing, override them here. The proxy checks
+# upstream-specific rates first, then falls back to the global `pricing` block.
+# Run `node scripts/cost-audit.js --reconcile <portal_amount>` to find the
+# implied rates from your actual bill.
+#
+# upstream_pricing:
+#   rdsec:
+#     claude-opus-4-6:    { input: 15.00, output: 75.00, cache_read: 0.66, cache_write: 18.75 }
+#     claude-sonnet-4-6:  { input:  3.00, output: 15.00, cache_read: 0.13, cache_write:  3.75 }
+#     default:            { input:  3.00, output: 15.00, cache_read: 0.13, cache_write:  3.75 }
+
 budget:
   monthly_limit: 100.00     # USD
   alert_at: [50, 75, 90]    # percent thresholds

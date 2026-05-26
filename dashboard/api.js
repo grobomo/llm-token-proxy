@@ -46,6 +46,9 @@ router.get('/', (req, res) => {
       { method: 'GET', path: '/api/digest', description: 'Styled HTML email digest of usage', params: ['period=daily|weekly'] },
       { method: 'GET', path: '/api/db-stats', description: 'Database stats: row count, date range, total cost' },
       { method: 'GET', path: '/api/uptime', description: 'Process uptime + historical availability (success rate, 5xx count)' },
+      { method: 'GET', path: '/api/investigations', description: 'Active cost investigations (anomaly detection + Haiku analysis)', params: ['status=active|acknowledged|resolved|all'] },
+      { method: 'POST', path: '/api/investigations/:id/acknowledge', description: 'Acknowledge a cost investigation (localhost only)' },
+      { method: 'GET', path: '/api/fleet', description: 'Active Claude Code sessions with cost enrichment' },
       { method: 'POST', path: '/api/purge', description: 'Delete usage data older than N days (localhost only)', params: ['body: {days: 90, dryRun: true|false}'] },
       { method: 'POST', path: '/api/backfill-cache', description: 'Retroactively estimate cache tokens (localhost only)', params: ['body: {dryRun: true|false}'] },
     ],
@@ -62,6 +65,7 @@ function parseRange(req) {
     '24h': '-24 hours',
     '7d':  '-7 days',
     '30d': '-30 days',
+    '90d': '-90 days',
   };
   return map[r] || '-24 hours';
 }
@@ -286,48 +290,91 @@ router.get('/top-operations', (req, res) => {
 
 // ---------------------------------------------------------------------------
 // GET /api/hourly-breakdown
-// Last 24 hours grouped by hour with model + project breakdown per hour.
+// Grouped by hour (for ranges <= 24h) or by day (for ranges >= 7d).
+// Returns all time slots in the range, including zeros.
 // ---------------------------------------------------------------------------
 router.get('/hourly-breakdown', (req, res) => {
   try {
+    const range = req.query.range || '24h';
     const interval = parseRange(req);
+    const useDaily = ['7d', '30d', '90d'].includes(range);
+    const bucketFmt = useDaily ? '%Y-%m-%d' : '%Y-%m-%dT%H';
+    const bucketCol = 'bucket';
+
     const projectRows = db.query(`
       SELECT
-        strftime('%Y-%m-%dT%H', timestamp) AS hour,
+        strftime('${bucketFmt}', timestamp) AS ${bucketCol},
         COALESCE(project, '(untagged)') AS project,
-        SUM(estimated_cost_usd) AS cost,
-        COUNT(*) AS calls
-      FROM usage_log
-      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
-      GROUP BY hour, project
-      ORDER BY hour, cost DESC
-    `);
-
-    const modelRows = db.query(`
-      SELECT
-        strftime('%Y-%m-%dT%H', timestamp) AS hour,
         model,
         SUM(estimated_cost_usd) AS cost,
         COUNT(*) AS calls
       FROM usage_log
       WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
-      GROUP BY hour, model
-      ORDER BY hour, cost DESC
+      GROUP BY ${bucketCol}, project, model
+      ORDER BY ${bucketCol}, cost DESC
     `);
 
-    const hourMap = {};
+    const modelRows = db.query(`
+      SELECT
+        strftime('${bucketFmt}', timestamp) AS ${bucketCol},
+        model,
+        upstream,
+        SUM(estimated_cost_usd) AS cost,
+        COUNT(*) AS calls
+      FROM usage_log
+      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
+      GROUP BY ${bucketCol}, model, upstream
+      ORDER BY ${bucketCol}, cost DESC
+    `);
+
+    const bucketMap = {};
+    const bucketProjectMap = {};
     for (const r of projectRows) {
-      if (!hourMap[r.hour]) hourMap[r.hour] = { hour: r.hour, total_cost: 0, total_calls: 0, projects: [], models: [] };
-      hourMap[r.hour].total_cost += r.cost || 0;
-      hourMap[r.hour].total_calls += r.calls || 0;
-      hourMap[r.hour].projects.push({ project: r.project, cost: parseFloat((r.cost || 0).toFixed(4)), calls: r.calls });
+      if (!bucketMap[r.bucket]) bucketMap[r.bucket] = { hour: r.bucket, total_cost: 0, total_calls: 0, projects: [], models: [] };
+      bucketMap[r.bucket].total_cost += r.cost || 0;
+      bucketMap[r.bucket].total_calls += r.calls || 0;
+      const bpKey = r.bucket + '|' + r.project;
+      if (!bucketProjectMap[bpKey]) {
+        bucketProjectMap[bpKey] = { project: r.project, cost: 0, calls: 0, models: [] };
+        bucketMap[r.bucket].projects.push(bucketProjectMap[bpKey]);
+      }
+      bucketProjectMap[bpKey].cost += r.cost || 0;
+      bucketProjectMap[bpKey].calls += r.calls || 0;
+      bucketProjectMap[bpKey].models.push({ model: r.model, cost: parseFloat((r.cost || 0).toFixed(4)), calls: r.calls });
+    }
+    for (const p of Object.values(bucketProjectMap)) {
+      p.cost = parseFloat(p.cost.toFixed(4));
+      p.models.sort((a, b) => b.cost - a.cost);
     }
     for (const r of modelRows) {
-      if (!hourMap[r.hour]) hourMap[r.hour] = { hour: r.hour, total_cost: 0, total_calls: 0, projects: [], models: [] };
-      hourMap[r.hour].models.push({ model: r.model, cost: parseFloat((r.cost || 0).toFixed(4)), calls: r.calls });
+      if (!bucketMap[r.bucket]) bucketMap[r.bucket] = { hour: r.bucket, total_cost: 0, total_calls: 0, projects: [], models: [] };
+      bucketMap[r.bucket].models.push({ model: r.model, upstream: r.upstream, cost: parseFloat((r.cost || 0).toFixed(4)), calls: r.calls });
     }
 
-    res.json({ hours: Object.values(hourMap) });
+    // Generate all time slots in the range (fill gaps with zeros)
+    const now = new Date();
+    const allSlots = [];
+    if (useDaily) {
+      const days = range === '90d' ? 90 : range === '30d' ? 30 : 7;
+      for (let i = days - 1; i >= 0; i--) {
+        const d = new Date(now.getTime() - i * 86400000);
+        const key = d.toISOString().slice(0, 10);
+        allSlots.push(key);
+      }
+    } else {
+      const hours = range === '12h' ? 12 : range === '6h' ? 6 : range === '1h' ? 1 : 24;
+      for (let i = hours - 1; i >= 0; i--) {
+        const d = new Date(now.getTime() - i * 3600000);
+        const key = d.toISOString().slice(0, 13);
+        allSlots.push(key);
+      }
+    }
+
+    const filled = allSlots.map(slot => {
+      return bucketMap[slot] || { hour: slot, total_cost: 0, total_calls: 0, projects: [], models: [] };
+    });
+
+    res.json({ hours: filled, granularity: useDaily ? 'daily' : 'hourly' });
   } catch (err) {
     res.status(500).json({ error: 'internal_error', message: err.message });
   }
@@ -399,6 +446,94 @@ router.get('/project-costs', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/portal-comparison
+// Compares tracker daily totals to RDsec portal actual billing.
+// Reads portal-data.json for ground truth. Shows last 7 matched days.
+// ---------------------------------------------------------------------------
+router.get('/portal-comparison', (req, res) => {
+  try {
+    const portalPath = path.resolve(__dirname, '..', 'scripts', 'portal-data.json');
+    if (!fs.existsSync(portalPath)) {
+      return res.json({ error: 'no_portal_data', message: 'scripts/portal-data.json not found' });
+    }
+
+    const portalData = JSON.parse(fs.readFileSync(portalPath, 'utf-8'));
+    const lastPulled = fs.statSync(portalPath).mtime.toISOString();
+
+    const trackerDaily = db.query(`
+      SELECT
+        date(timestamp) AS day,
+        ROUND(SUM(estimated_cost_usd), 2) AS cost,
+        COUNT(*) AS calls
+      FROM usage_log
+      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-30 days')
+      GROUP BY day
+      ORDER BY day DESC
+    `);
+
+    const trackerMap = {};
+    for (const r of trackerDaily) trackerMap[r.day] = r;
+
+    const comparison = portalData
+      .filter(p => trackerMap[p.date])
+      .map(p => ({
+        date: p.date,
+        portal_cost: p.cost,
+        portal_traces: p.traces,
+        tracker_cost: trackerMap[p.date].cost,
+        tracker_calls: trackerMap[p.date].calls,
+        delta: parseFloat((trackerMap[p.date].cost - p.cost).toFixed(2)),
+        ratio: p.cost > 0 ? parseFloat((trackerMap[p.date].cost / p.cost).toFixed(3)) : null,
+      }))
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 7);
+
+    res.json({ comparison, last_pulled: lastPulled, source: 'scripts/portal-data.json' });
+  } catch (err) {
+    res.status(500).json({ error: 'internal_error', message: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/project-details
+// Recent calls for a project — shows WHAT is causing spend.
+// ---------------------------------------------------------------------------
+router.get('/project-details', (req, res) => {
+  try {
+    const project = req.query.project || '';
+    const interval = parseRange(req);
+    const projectFilter = project === '(untagged)'
+      ? "(project IS NULL OR project = '')"
+      : `project = '${project.replace(/'/g, "''")}'`;
+
+    const summary = db.query(`
+      SELECT model, COUNT(*) AS calls, ROUND(SUM(estimated_cost_usd), 4) AS cost,
+             SUM(input_tokens + cache_read_tokens + cache_write_tokens) AS total_input,
+             SUM(output_tokens) AS total_output
+      FROM usage_log
+      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
+        AND ${projectFilter}
+      GROUP BY model ORDER BY cost DESC
+    `);
+
+    const recent = db.query(`
+      SELECT timestamp, model, consumer,
+             input_tokens + cache_read_tokens + cache_write_tokens AS prompt_tokens,
+             output_tokens, ROUND(estimated_cost_usd, 4) AS cost, session_id
+      FROM usage_log
+      WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
+        AND ${projectFilter}
+      ORDER BY estimated_cost_usd DESC
+      LIMIT 10
+    `);
+
+    res.json({ project, summary, recent_expensive: recent });
+  } catch (err) {
+    res.status(500).json({ error: 'internal_error', message: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/cost-breakdown
 // Model-level cost breakdown + cache economics for the dashboard.
 // ---------------------------------------------------------------------------
@@ -408,6 +543,7 @@ router.get('/cost-breakdown', (req, res) => {
     const models = db.query(`
       SELECT
         model,
+        upstream,
         COUNT(*) AS calls,
         SUM(estimated_cost_usd) AS cost,
         SUM(input_tokens) AS input_tokens,
@@ -418,7 +554,7 @@ router.get('/cost-breakdown', (req, res) => {
       FROM usage_log
       WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')
         AND http_status BETWEEN 200 AND 299
-      GROUP BY model
+      GROUP BY model, upstream
       ORDER BY cost DESC
     `);
 
@@ -467,7 +603,10 @@ router.get('/savings-potential', (req, res) => {
     `);
 
     const ss = sessionStarts[0] || { sessions: 0, total_cw: 0 };
-    const cwCost = (ss.total_cw || 0) * 18.75 / 1e6;
+    const config = getConfig();
+    const defaultPricing = config?.pricing?.default || {};
+    const cwRate = defaultPricing.cache_write || 18.75;
+    const cwCost = (ss.total_cw || 0) * cwRate / 1e6;
     const savingsPerFewerRestart = ss.sessions > 1 ? cwCost / ss.sessions : 0;
 
     res.json({
@@ -687,6 +826,38 @@ router.get('/sessions', (req, res) => {
       total_calls: totalCalls,
       session_count: sessions.length,
     });
+  } catch (err) {
+    res.status(500).json({ error: 'internal_error', message: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/call-details?project=X&range=24h&limit=50
+// Per-call details: timestamp, prompt preview, caller CWD, model, tokens, cost
+// ---------------------------------------------------------------------------
+router.get('/call-details', (req, res) => {
+  try {
+    const interval = parseRange(req);
+    const project = req.query.project || null;
+    const sessionId = req.query.session_id || null;
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+
+    let where = `timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${interval}')`;
+    if (project) where += ` AND project = '${project.replace(/'/g, "''")}'`;
+    if (sessionId) where += ` AND session_id = '${sessionId.replace(/'/g, "''")}'`;
+
+    const calls = db.query(`
+      SELECT timestamp, model, consumer, project, session_id,
+             input_tokens, output_tokens, cache_read_tokens,
+             estimated_cost_usd AS cost, duration_ms,
+             caller_cwd, prompt_preview, user_agent
+      FROM usage_log
+      WHERE ${where}
+      ORDER BY timestamp DESC
+      LIMIT ${limit}
+    `);
+
+    res.json({ calls, count: calls.length });
   } catch (err) {
     res.status(500).json({ error: 'internal_error', message: err.message });
   }
@@ -942,6 +1113,190 @@ router.get('/db-stats', (req, res) => {
       projects: row.projects || 0,
       sessions: row.sessions || 0,
       total_cost: parseFloat((row.total_cost || 0).toFixed(2)),
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'internal_error', message: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/investigations
+// Active cost investigations from cost_investigations table.
+// ---------------------------------------------------------------------------
+router.get('/investigations', (req, res) => {
+  try {
+    const status = req.query.status || 'active';
+    const validStatuses = ['active', 'acknowledged', 'resolved', 'all'];
+    const filterStatus = validStatuses.includes(status) ? status : 'active';
+    const whereClause = filterStatus === 'all' ? '1=1' : `status = '${filterStatus}'`;
+    const investigations = db.query(`
+      SELECT id, severity, type, summary, pattern, recommendation,
+             daily_cost_estimate, first_seen, last_seen, sample_ids, status,
+             created_at, updated_at
+      FROM cost_investigations
+      WHERE ${whereClause}
+      ORDER BY daily_cost_estimate DESC
+    `);
+
+    res.json({
+      investigations: investigations.map(inv => ({
+        ...inv,
+        pattern: (() => { try { return JSON.parse(inv.pattern); } catch { return inv.pattern; } })(),
+        sample_ids: (() => { try { return JSON.parse(inv.sample_ids); } catch { return []; } })(),
+      })),
+      count: investigations.length,
+      total_daily_waste: parseFloat(investigations.reduce((s, i) => s + (i.daily_cost_estimate || 0), 0).toFixed(2)),
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'internal_error', message: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/investigations/:id/acknowledge
+// Mark an investigation as acknowledged. Localhost only.
+// ---------------------------------------------------------------------------
+router.post('/investigations/:id/acknowledge', (req, res) => {
+  const ip = req.socket.remoteAddress;
+  if (ip !== '127.0.0.1' && ip !== '::1' && ip !== '::ffff:127.0.0.1') {
+    return res.status(403).json({ error: 'internal_only' });
+  }
+  try {
+    const id = req.params.id.replace(/[^a-zA-Z0-9_-]/g, '');
+    db.run(
+      `UPDATE cost_investigations SET status = 'acknowledged', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`,
+      id
+    );
+    res.json({ ok: true, id });
+  } catch (err) {
+    res.status(500).json({ error: 'internal_error', message: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/investigations/:id/fix
+// Queue a fix request for Claude to handle. Writes task to fix-queue dir.
+// Localhost only.
+// ---------------------------------------------------------------------------
+router.post('/investigations/:id/fix', (req, res) => {
+  const ip = req.socket.remoteAddress;
+  if (ip !== '127.0.0.1' && ip !== '::1' && ip !== '::ffff:127.0.0.1') {
+    return res.status(403).json({ error: 'internal_only' });
+  }
+  try {
+    const id = req.params.id.replace(/[^a-zA-Z0-9_-]/g, '');
+    const rows = db.query(`SELECT * FROM cost_investigations WHERE id = ?`, id);
+    if (!rows.length) return res.status(404).json({ error: 'not_found' });
+
+    const inv = rows[0];
+    let pattern = {};
+    try { pattern = JSON.parse(inv.pattern); } catch {}
+
+    const fixQueueDir = path.join(__dirname, '..', 'data', 'fix-queue');
+    if (!fs.existsSync(fixQueueDir)) fs.mkdirSync(fixQueueDir, { recursive: true });
+
+    const task = {
+      id,
+      created_at: new Date().toISOString(),
+      status: 'pending',
+      severity: inv.severity,
+      summary: inv.summary,
+      type: inv.type,
+      daily_cost_estimate: inv.daily_cost_estimate,
+      root_cause: pattern.haiku_root_cause || null,
+      fix_action: pattern.haiku_fix_action || inv.recommendation,
+    };
+
+    fs.writeFileSync(path.join(fixQueueDir, `${id}.json`), JSON.stringify(task, null, 2));
+
+    db.run(
+      `UPDATE cost_investigations SET status = 'fix_queued', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`,
+      id
+    );
+
+    res.json({ ok: true, id, message: 'Fix queued. Claude will investigate and apply the fix.' });
+  } catch (err) {
+    res.status(500).json({ error: 'internal_error', message: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/fleet
+// Active Claude Code sessions from ~/.claude/fleet/sessions/*.json,
+// enriched with cost data from the usage DB.
+// ---------------------------------------------------------------------------
+router.get('/fleet', (req, res) => {
+  res.set('X-Cache', 'BYPASS');
+  try {
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+    const sessionsDir = path.join(homeDir, '.claude', 'fleet', 'sessions');
+
+    let files = [];
+    try {
+      files = fs.readdirSync(sessionsDir).filter(f => f.endsWith('.json'));
+    } catch {
+      return res.json({ sessions: [], error: 'fleet sessions directory not found' });
+    }
+
+    const now = Date.now();
+    const sessions = [];
+
+    for (const file of files) {
+      try {
+        const raw = fs.readFileSync(path.join(sessionsDir, file), 'utf8');
+        const s = JSON.parse(raw);
+
+        const lastCheckin = s.last_checkin ? new Date(s.last_checkin).getTime() : 0;
+        const startedAt = s.started_at ? new Date(s.started_at).getTime() : 0;
+        const ageMs = now - lastCheckin;
+        const ageMin = Math.round(ageMs / 60000);
+
+        let status = 'active';
+        if (ageMs > 30 * 60000) status = 'stale';
+        else if (ageMs > 15 * 60000) status = 'inactive';
+
+        let cost24h = null;
+        const projectName = s.project || null;
+        if (projectName) {
+          try {
+            const safeName = projectName.replace(/[^a-zA-Z0-9_-]/g, '');
+            if (safeName) {
+              const costRow = db.query(
+                `SELECT SUM(estimated_cost_usd) AS cost, COUNT(*) AS calls
+                 FROM usage_log
+                 WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
+                   AND project LIKE '%${safeName}%'`
+              );
+              if (costRow[0] && costRow[0].cost) {
+                cost24h = { cost: parseFloat(costRow[0].cost.toFixed(4)), calls: costRow[0].calls };
+              }
+            }
+          } catch {}
+        }
+
+        sessions.push({
+          file,
+          session_id: s.session_id || file.replace('.json', ''),
+          project: projectName,
+          cwd: s.cwd || null,
+          model: s.model || null,
+          current_task: s.current_task || null,
+          started_at: s.started_at || null,
+          last_checkin: s.last_checkin || null,
+          status,
+          age_min: ageMin,
+          cost_24h: cost24h,
+        });
+      } catch {}
+    }
+
+    sessions.sort((a, b) => (b.last_checkin || '').localeCompare(a.last_checkin || ''));
+
+    res.json({
+      sessions,
+      total: sessions.length,
+      active: sessions.filter(s => s.status === 'active').length,
+      stale: sessions.filter(s => s.status === 'stale').length,
     });
   } catch (err) {
     res.status(500).json({ error: 'internal_error', message: err.message });

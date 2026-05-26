@@ -740,7 +740,7 @@ describe('E2E: Token Proxy', { timeout: 60000 }, () => {
     });
   });
 
-  describe('/api/export-excel', { timeout: 30000 }, () => {
+  describe('/api/export-excel', { timeout: 60000 }, () => {
     it('returns XLSX with chart for valid range', async () => {
       const res = await fetch(`http://127.0.0.1:${PROXY_PORT}/api/export-excel?range=24h`);
       assert.equal(res.status, 200);

@@ -19,6 +19,7 @@
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { overflow-x: hidden; max-width: 100vw; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', monospace;
       background: var(--bg);
@@ -32,13 +33,20 @@
     header {
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      padding: 16px 24px;
+      padding: 12px 16px;
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 8px;
+      flex-wrap: wrap;
+      overflow: hidden;
     }
     header h1 { font-size: 16px; font-weight: 600; color: var(--accent); }
-    header .total { color: var(--muted); font-size: 13px; margin-left: auto; }
+    header .total { color: var(--muted); font-size: 12px; margin-left: auto; }
+    @media (max-width: 600px) {
+      header { padding: 10px 12px; gap: 6px; }
+      header h1 { font-size: 14px; }
+      header .total { font-size: 11px; width: 100%; margin-left: 0; }
+    }
 
     .health-bar {
       background: var(--surface);
@@ -76,6 +84,11 @@
       padding: 32px 24px;
       display: flex;
       flex-direction: column;
+      max-width: 100%;
+      overflow: hidden;
+    }
+    @media (max-width: 600px) {
+      .chart-container { padding: 16px 12px; }
     }
     .chart-label {
       color: var(--muted);
@@ -97,7 +110,7 @@
     }
     .bar-wrap {
       flex: 1 1 0;
-      min-width: 44px;
+      min-width: 28px;
       max-width: 80px;
       display: flex;
       flex-direction: column;
@@ -108,8 +121,8 @@
       position: relative;
     }
     @media (max-width: 600px) {
-      .chart { gap: 1px; min-height: 200px; }
-      .bar-wrap { width: 56px; }
+      .chart { gap: 1px; min-height: 180px; max-width: 100%; }
+      .bar-wrap { min-width: 20px; max-width: 40px; }
     }
     .bar-stack {
       width: 100%;
@@ -142,11 +155,24 @@
       border: 1px solid var(--border);
       border-radius: 8px;
       padding: 14px;
-      min-width: 200px;
+      min-width: 180px;
       max-width: 280px;
-      z-index: 100;
+      z-index: 9999;
       box-shadow: 0 8px 24px rgba(0,0,0,0.4);
       pointer-events: none;
+      overflow-y: auto;
+      max-height: 60vh;
+    }
+    @media (max-width: 600px) {
+      .tooltip {
+        bottom: 0 !important; left: 0 !important; right: 0 !important; top: auto !important;
+        max-width: 100%; min-width: 100%;
+        max-height: 45vh;
+        border-radius: 12px 12px 0 0;
+        padding: 16px 20px 24px;
+        pointer-events: auto;
+        box-shadow: 0 -4px 24px rgba(0,0,0,0.5);
+      }
     }
     .tooltip h3 {
       font-size: 13px;
@@ -259,6 +285,39 @@
       color: var(--muted);
       margin-top: 4px;
     }
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 1000;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 40px 16px;
+      overflow-y: auto;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      max-width: 900px;
+      width: 100%;
+      max-height: 80vh;
+      overflow-y: auto;
+      padding: 20px;
+    }
+    .modal h2 { font-size: 16px; margin-bottom: 12px; color: var(--accent); }
+    .modal table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .modal th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .modal td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+    .modal tr:hover td { background: rgba(88,166,255,0.05); }
+    .modal .close-btn { float: right; background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; padding: 4px 8px; }
+    .modal .close-btn:hover { color: var(--text); }
+    @media (max-width: 600px) {
+      .modal-overlay { padding: 16px 8px; }
+      .modal { padding: 12px; font-size: 11px; }
+    }
   </style>
 </head>
 <body>
@@ -266,20 +325,27 @@
 <header>
   <h1>Token Tracker</h1>
   <select id="range-select" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:12px;cursor:pointer">
-    <option value="1h">1h</option>
-    <option value="6h">6h</option>
-    <option value="12h">12h</option>
-    <option value="24h" selected>24h</option>
-    <option value="7d">7d</option>
-    <option value="30d">30d</option>
+    <option value="24h" selected>1 day</option>
+    <option value="7d">7 days</option>
+    <option value="30d">30 days</option>
+    <option value="90d">90 days</option>
   </select>
   <span class="total" id="trend-label"></span>
   <span class="total" id="total-label">—</span>
   <span class="total" id="last-refresh" style="font-size:11px"></span>
-  <button id="export-btn" title="Export CSV" style="background:var(--bg);color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:12px;cursor:pointer" onclick="exportCSV()">CSV</button>
-  <button title="Export Excel with chart" style="background:var(--bg);color:var(--accent);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:12px;cursor:pointer;font-weight:600" onclick="exportExcel()">Excel</button>
-  <button title="Email digest" style="background:var(--bg);color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:12px;cursor:pointer" onclick="window.open('/api/digest?period=daily','_blank')">Digest</button>
+  <button id="export-btn" title="Export CSV" style="background:var(--bg);color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:10px 12px;font-size:12px;cursor:pointer;min-height:44px" onclick="exportCSV()">CSV</button>
+  <button title="Export Excel with chart" style="background:var(--bg);color:var(--accent);border:1px solid var(--border);border-radius:4px;padding:10px 12px;font-size:12px;cursor:pointer;font-weight:600;min-height:44px" onclick="exportExcel()">Excel</button>
+  <button title="Email digest" style="background:var(--bg);color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:10px 12px;font-size:12px;cursor:pointer;min-height:44px" onclick="window.open('/api/digest?period=daily','_blank')">Digest</button>
+  <button title="Session history" style="background:var(--bg);color:var(--green);border:1px solid var(--border);border-radius:4px;padding:10px 12px;font-size:12px;cursor:pointer;font-weight:600;min-height:44px" onclick="openSessionHistory()">History</button>
 </header>
+
+<div class="modal-overlay" id="history-modal" onclick="if(event.target===this)closeHistory()">
+  <div class="modal">
+    <button class="close-btn" onclick="closeHistory()">&times;</button>
+    <h2>Session History</h2>
+    <div id="history-content">Loading...</div>
+  </div>
+</div>
 
 <div class="health-bar" id="health-bar">
   <div class="health-item">
@@ -294,7 +360,17 @@
 </div>
 
 <div class="chart-container">
-  <div class="chart-label" id="chart-label">Hourly spend — last 24 hours</div>
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <div class="chart-label" id="chart-label">Spend — last 1 day</div>
+    <div style="display:flex;gap:8px;align-items:center;font-size:12px">
+      <label style="cursor:pointer;padding:8px 4px;min-height:44px;display:inline-flex;align-items:center;gap:4px"><input type="radio" name="chart-view" value="project" checked onchange="onChartViewChange()" style="width:18px;height:18px"> Project</label>
+      <label style="cursor:pointer;padding:8px 4px;min-height:44px;display:inline-flex;align-items:center;gap:4px"><input type="radio" name="chart-view" value="model" onchange="onChartViewChange()" style="width:18px;height:18px"> Model</label>
+      <label style="cursor:pointer;padding:8px 4px;min-height:44px;display:inline-flex;align-items:center;gap:4px"><input type="radio" name="chart-view" value="both" onchange="onChartViewChange()" style="width:18px;height:18px"> Both</label>
+    </div>
+    <select id="project-filter" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:12px;cursor:pointer" onchange="applyProjectFilter()">
+      <option value="">All projects</option>
+    </select>
+  </div>
   <div class="chart" id="chart"></div>
 </div>
 
@@ -318,8 +394,22 @@
 
 <div class="breakdown">
   <div class="breakdown-card" style="grid-column: span 2">
+    <h3>Cost Investigations</h3>
+    <div id="investigations-panel"></div>
+  </div>
+</div>
+
+<div class="breakdown">
+  <div class="breakdown-card" style="grid-column: span 2">
     <h3 class="range-label">Sessions — 24h</h3>
     <div id="sessions-panel"></div>
+  </div>
+</div>
+
+<div class="breakdown">
+  <div class="breakdown-card" style="grid-column: span 2">
+    <h3>Fleet — active sessions</h3>
+    <div id="fleet-panel"></div>
   </div>
 </div>
 
@@ -344,11 +434,11 @@
 <script>
 const COLORS = ['#58a6ff','#3fb950','#d29922','#f85149','#db6d28','#a371f7','#79c0ff','#56d364','#e3b341','#ff7b72'];
 
-function shortModel(name) {
+function shortModel(name, upstream) {
   const short = esc(name.replace(/^claude-/, '').replace(/-20\d{6}$/, ''));
-  if (name.includes('-aws')) return short + ' <span style="opacity:0.5;font-size:10px">[RDsec]</span>';
-  if (name.includes('opus') || name.includes('sonnet') || name.includes('haiku')) return short + ' <span style="opacity:0.5;font-size:10px">[C4E]</span>';
-  return short;
+  if (!upstream) return short;
+  const tag = esc(upstream).toUpperCase();
+  return short + ` <span style="opacity:0.5;font-size:10px">[${tag}]</span>`;
 }
 
 // Stable model→color map built from full dataset
@@ -365,10 +455,91 @@ function buildModelColorMap(hours) {
   return map;
 }
 
+let STATIC_MODE = false;
+const STATIC_RANGES = ['24h', '7d', '30d', '90d'];
+let lastMetaCheck = 0;
+
+async function detectStaticMode() {
+  try {
+    const r = await fetch('/data/meta.json', { method: 'HEAD' });
+    if (r.ok) { STATIC_MODE = true; return; }
+  } catch {}
+  try {
+    const r = await fetch('/api/db-stats');
+    if (r.ok) return;
+  } catch {}
+  STATIC_MODE = true;
+}
+
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-function rangeParam() { return document.getElementById('range-select').value; }
-function apiUrl(path) { return `${path}${path.includes('?') ? '&' : '?'}range=${rangeParam()}`; }
-function rangeLabel() { return rangeParam(); }
+function rangeParam() {
+  const v = document.getElementById('range-select').value;
+  if (STATIC_MODE && !STATIC_RANGES.includes(v)) return '24h';
+  return v;
+}
+function apiUrl(path) {
+  if (STATIC_MODE) {
+    const range = rangeParam();
+    const endpoint = path.replace('/api/', '');
+    return `/data/${endpoint}-${range}.json`;
+  }
+  return `${path}${path.includes('?') ? '&' : '?'}range=${rangeParam()}`;
+}
+function staticUrl(endpoint) {
+  return STATIC_MODE ? `/data/${endpoint}.json` : `/api/${endpoint}`;
+}
+function rangeLabel() {
+  const labels = { '24h': '1 day', '7d': '7 days', '30d': '30 days', '90d': '90 days' };
+  return labels[rangeParam()] || rangeParam();
+}
+
+let _hourlyData = null;
+
+function getChartView() {
+  const checked = document.querySelector('input[name="chart-view"]:checked');
+  return checked ? checked.value : 'project';
+}
+
+function onChartViewChange() {
+  if (_hourlyData) {
+    const proj = document.getElementById('project-filter').value;
+    if (proj) applyProjectFilter();
+    else renderChart(_hourlyData);
+  }
+}
+
+const projectColors = {};
+const projectPalette = ['#4fc3f7','#81c784','#ffb74d','#e57373','#ba68c8','#4db6ac','#fff176','#f06292','#90a4ae','#aed581','#7986cb','#ff8a65'];
+function getProjectColor(name) {
+  if (!projectColors[name]) {
+    const idx = Object.keys(projectColors).length % projectPalette.length;
+    projectColors[name] = projectPalette[idx];
+  }
+  return projectColors[name];
+}
+
+function applyProjectFilter() {
+  if (!_hourlyData) return;
+  const proj = document.getElementById('project-filter').value;
+  if (!proj) {
+    renderChart(_hourlyData);
+    return;
+  }
+  const filtered = {
+    hours: _hourlyData.hours.map(h => {
+      const match = (h.projects || []).find(p => p.project === proj);
+      return {
+        ...h,
+        total_cost: match ? match.cost : 0,
+        total_calls: match ? match.calls : 0,
+        projects: match ? [match] : [],
+        models: match && match.models ? match.models : [],
+      };
+    }),
+    granularity: _hourlyData.granularity || 'hourly',
+  };
+  renderChart(filtered, proj);
+}
 
 function fmtCost(usd) {
   if (!usd || usd === 0) return '$0';
@@ -378,85 +549,196 @@ function fmtCost(usd) {
 }
 
 
-function renderChart(data) {
+function renderChart(data, projectLabel) {
   const chart = document.getElementById('chart');
   const hours = data.hours || [];
+  const granularity = data.granularity || 'hourly';
 
   if (hours.length === 0) {
-    chart.innerHTML = '<div class="empty-state">No data in last 24 hours</div>';
+    chart.innerHTML = '<div class="empty-state">No data in selected range</div>';
     return;
+  }
+
+  // Populate project dropdown from raw data (only on first render)
+  if (!projectLabel && _hourlyData) {
+    const select = document.getElementById('project-filter');
+    const allProjects = {};
+    for (const h of _hourlyData.hours) {
+      for (const p of (h.projects || [])) {
+        allProjects[p.project] = (allProjects[p.project] || 0) + p.cost;
+      }
+    }
+    const sorted = Object.entries(allProjects).sort((a, b) => b[1] - a[1]);
+    const current = select.value;
+    select.innerHTML = '<option value="">All projects</option>' +
+      sorted.map(([p, c]) => `<option value="${esc(p)}" ${p === current ? 'selected' : ''}>${esc(p)} (${fmtCost(c)})</option>`).join('');
   }
 
   const modelColors = buildModelColorMap(hours);
   const maxCost = Math.max(...hours.map(h => h.total_cost), 0.01);
   const totalCost = hours.reduce((s, h) => s + h.total_cost, 0);
   const totalCalls = hours.reduce((s, h) => s + h.total_calls, 0);
-  document.getElementById('total-label').textContent = `${fmtCost(totalCost)} last 24h — ${totalCalls} calls`;
+  const suffix = projectLabel ? ` — ${esc(projectLabel)}` : '';
+  const rl = rangeLabel();
+  document.getElementById('total-label').textContent = `${fmtCost(totalCost)} last ${rl} — ${totalCalls} calls${suffix}`;
 
-  function utcToCdt(utcHour) { return (utcHour - 5 + 24) % 24; }
-  function fmtHour(h) { const hr12 = h % 12 || 12; return `${hr12}:00${h < 12 ? 'a' : 'p'}`; }
+  const tzOffset = new Date().getTimezoneOffset();
+
+  function utcToLocal(utcHour) { return (utcHour - tzOffset / 60 + 24) % 24; }
+  function fmtHour(h) { const hr12 = Math.floor(h) % 12 || 12; return `${hr12}${h < 12 ? 'a' : 'p'}`; }
+
+  function makeBarLabel(slot) {
+    if (granularity === 'daily') {
+      const d = new Date(slot + 'T12:00:00Z');
+      const mon = d.toLocaleDateString('en-US', { month: 'short' });
+      return `${mon} ${d.getUTCDate()}`;
+    }
+    const utcH = parseInt(slot.slice(11, 13));
+    const localH = utcToLocal(utcH);
+    return fmtHour(localH);
+  }
+
+  function makeTooltipTitle(slot) {
+    if (granularity === 'daily') {
+      const d = new Date(slot + 'T12:00:00Z');
+      return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    }
+    const utcH = parseInt(slot.slice(11, 13));
+    const localH = utcToLocal(utcH);
+    const localNext = (localH + 1) % 24;
+    const tz = new Date().toLocaleTimeString('en-US', {timeZoneName: 'short'}).split(' ').pop();
+    return `${fmtHour(localH)}–${fmtHour(localNext)} ${tz}`;
+  }
+
+  const viewMode = getChartView();
 
   chart.innerHTML = hours.map(h => {
     const barPct = Math.max(1, (h.total_cost / maxCost) * 100);
-    const utcH = parseInt(h.hour.slice(11, 13));
-    const cdtH = utcToCdt(utcH);
-    const cdtLabel = fmtHour(cdtH);
-    const cdtNext = fmtHour((cdtH + 1) % 24);
+    const label = makeBarLabel(h.hour);
+    const tipTitle = makeTooltipTitle(h.hour);
 
     const models = (h.models || []).sort((a, b) => b.cost - a.cost);
-    const segments = models.map(m => {
-      const segPct = h.total_cost > 0 ? (m.cost / h.total_cost) * 100 : 0;
-      return `<div class="bar-segment" style="height:${segPct}%;background:${modelColors[m.model] || 'var(--accent)'}"></div>`;
-    }).join('');
+    const projects = (h.projects || []).sort((a, b) => b.cost - a.cost);
 
-    const legend = models.slice(0, 6).map(m => `
-      <div class="legend-item">
-        <div class="legend-dot" style="background:${modelColors[m.model] || 'var(--accent)'}"></div>
-        <span>${shortModel(m.model)}</span>
-        <span class="legend-cost">${fmtCost(m.cost)}</span>
-      </div>
-    `).join('');
+    let segments = '';
+    if (viewMode === 'model') {
+      segments = models.map(m => {
+        const segPct = h.total_cost > 0 ? (m.cost / h.total_cost) * 100 : 0;
+        return `<div class="bar-segment" style="height:${segPct}%;background:${modelColors[m.model] || 'var(--accent)'}"></div>`;
+      }).join('');
+    } else if (viewMode === 'project') {
+      segments = projects.map(p => {
+        const segPct = h.total_cost > 0 ? (p.cost / h.total_cost) * 100 : 0;
+        return `<div class="bar-segment" style="height:${segPct}%;background:${getProjectColor(p.project)}"></div>`;
+      }).join('');
+    } else {
+      segments = projects.map(p => {
+        const segPct = h.total_cost > 0 ? (p.cost / h.total_cost) * 100 : 0;
+        const pModels = p.models || [];
+        const subSegs = pModels.map(m => {
+          const mPct = p.cost > 0 ? (m.cost / p.cost) * 100 : 0;
+          return `<div style="height:${mPct}%;background:${modelColors[m.model] || 'var(--accent)'};opacity:0.85"></div>`;
+        }).join('');
+        return `<div class="bar-segment" style="height:${segPct}%;background:${getProjectColor(p.project)};display:flex;flex-direction:column-reverse;border-top:1px solid rgba(0,0,0,0.3)">${subSegs}</div>`;
+      }).join('');
+    }
+
+    let legend = '';
+    if (viewMode === 'model') {
+      legend = models.slice(0, 6).map(m => `
+        <div class="legend-item">
+          <div class="legend-dot" style="background:${modelColors[m.model] || 'var(--accent)'}"></div>
+          <span>${shortModel(m.model, m.upstream)}</span>
+          <span class="legend-cost">${fmtCost(m.cost)}</span>
+        </div>
+      `).join('');
+    } else if (viewMode === 'project') {
+      legend = projects.slice(0, 6).map(p => `
+        <div class="legend-item">
+          <div class="legend-dot" style="background:${getProjectColor(p.project)}"></div>
+          <span>${esc(p.project)}</span>
+          <span class="legend-cost">${fmtCost(p.cost)} (${p.calls})</span>
+        </div>
+      `).join('');
+    } else {
+      legend = projects.slice(0, 5).map(p => {
+        const pModels = (p.models || []).slice(0, 3).map(m =>
+          `<div class="legend-item" style="padding-left:16px;font-size:11px"><span>${shortModel(m.model)}</span><span class="legend-cost">${fmtCost(m.cost)}</span></div>`
+        ).join('');
+        return `
+          <div class="legend-item">
+            <div class="legend-dot" style="background:${getProjectColor(p.project)}"></div>
+            <span>${esc(p.project)}</span>
+            <span class="legend-cost">${fmtCost(p.cost)}</span>
+          </div>${pModels}`;
+      }).join('');
+    }
 
     return `
       <div class="bar-wrap">
         <div class="tooltip">
-          <h3>${cdtLabel}–${cdtNext} CDT</h3>
+          <h3>${tipTitle}</h3>
           <div class="cost-total">${fmtCost(h.total_cost)}</div>
           <div class="legend">${legend}</div>
         </div>
         <div class="bar-stack" style="height:${barPct}%">${segments}</div>
-        <span class="hour-label">${cdtLabel}</span>
+        <span class="hour-label">${label}</span>
       </div>
     `;
   }).join('');
 
-  // Position tooltips on hover/tap (fixed positioning avoids clipping)
   let activeTooltip = null;
-  function showTip(wrap) {
-    if (activeTooltip) activeTooltip.style.display = 'none';
-    const tip = wrap.querySelector('.tooltip');
-    const rect = wrap.getBoundingClientRect();
-    tip.style.display = 'block';
-    const tipRect = tip.getBoundingClientRect();
-    let left = rect.left + rect.width / 2 - tipRect.width / 2;
-    let top = rect.top - tipRect.height - 8;
-    if (left < 8) left = 8;
-    if (left + tipRect.width > window.innerWidth - 8) left = window.innerWidth - tipRect.width - 8;
-    if (top < 8) top = rect.bottom + 8;
-    tip.style.left = left + 'px';
-    tip.style.top = top + 'px';
-    activeTooltip = tip;
+  let activeWrap = null;
+
+  function positionTip(tip, x, y) {
+    if (window.innerWidth <= 600) {
+      tip.style.left = '0';
+      tip.style.right = '0';
+      tip.style.bottom = '0';
+      tip.style.top = 'auto';
+    } else {
+      const tipRect = tip.getBoundingClientRect();
+      let left = x - tipRect.width / 2;
+      let top = y - tipRect.height - 12;
+      if (left < 8) left = 8;
+      if (left + tipRect.width > window.innerWidth - 8) left = window.innerWidth - tipRect.width - 8;
+      if (top < 8) top = y + 20;
+      tip.style.left = left + 'px';
+      tip.style.top = top + 'px';
+      tip.style.bottom = 'auto';
+      tip.style.right = 'auto';
+    }
   }
-  function hideTip() { if (activeTooltip) { activeTooltip.style.display = 'none'; activeTooltip = null; } }
+
+  function showTip(wrap, x, y) {
+    if (activeTooltip && activeWrap === wrap) return;
+    hideTip();
+    const tip = wrap.querySelector('.tooltip');
+    tip.style.display = 'block';
+    positionTip(tip, x, y);
+    activeTooltip = tip;
+    activeWrap = wrap;
+  }
+
+  function hideTip() {
+    if (activeTooltip) { activeTooltip.style.display = 'none'; activeTooltip = null; activeWrap = null; }
+  }
 
   chart.querySelectorAll('.bar-wrap').forEach(wrap => {
-    wrap.addEventListener('mouseenter', () => showTip(wrap));
+    wrap.addEventListener('mouseenter', (e) => showTip(wrap, e.clientX, e.clientY));
+    wrap.addEventListener('mousemove', (e) => {
+      if (activeWrap === wrap && activeTooltip) positionTip(activeTooltip, e.clientX, e.clientY);
+    });
     wrap.addEventListener('mouseleave', hideTip);
     let touchMoved = false;
-    wrap.addEventListener('touchstart', () => { touchMoved = false; }, { passive: true });
+    wrap.addEventListener('touchstart', (e) => { touchMoved = false; }, { passive: true });
     wrap.addEventListener('touchmove', () => { touchMoved = true; }, { passive: true });
     wrap.addEventListener('touchend', (e) => {
-      if (!touchMoved) { e.preventDefault(); showTip(wrap); }
+      if (!touchMoved) {
+        e.preventDefault();
+        const touch = e.changedTouches[0];
+        showTip(wrap, touch.clientX, touch.clientY);
+      }
     });
   });
   document.addEventListener('touchstart', (e) => {
@@ -471,7 +753,9 @@ async function load() {
   try {
     const r = await fetch(apiUrl('/api/hourly-breakdown'));
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    renderChart(await r.json());
+    _hourlyData = await r.json();
+    const proj = document.getElementById('project-filter').value;
+    if (proj) { applyProjectFilter(); } else { renderChart(_hourlyData); }
   } catch (err) {
     document.getElementById('chart').innerHTML = `<div class="empty-state">Error: ${esc(err.message)}</div>`;
   }
@@ -496,7 +780,7 @@ function renderBreakdown(data) {
   el.innerHTML = models.map((m, i) => `
     <div class="model-row">
       <div class="model-dot" style="background:${COLORS[i % COLORS.length]}"></div>
-      <span class="model-name">${shortModel(m.model)}</span>
+      <span class="model-name">${shortModel(m.model, m.upstream)}</span>
       <span class="model-calls">${m.calls} calls</span>
       <span class="model-cost">${fmtCost(m.cost)}</span>
     </div>
@@ -585,7 +869,7 @@ async function loadSavings() {
 async function loadTrend() {
   try {
     const tzOffset = new Date().getTimezoneOffset(); // minutes (positive = behind UTC)
-    const r = await fetch(`/api/daily-comparison?tz_offset=${-tzOffset}`);
+    const r = await fetch(STATIC_MODE ? '/data/daily-comparison.json' : `/api/daily-comparison?tz_offset=${-tzOffset}`);
     if (!r.ok) return;
     const d = await r.json();
     const el = document.getElementById('trend-label');
@@ -612,7 +896,7 @@ async function loadHealth() {
   const staleEl = document.getElementById('health-stale');
 
   try {
-    const r = await fetch('/diagnose');
+    const r = await fetch(STATIC_MODE ? '/data/health.json' : '/diagnose');
     const d = await r.json();
     lastHealthCheck = Date.now();
     lastHealthSuccess = d.ts;
@@ -631,7 +915,7 @@ async function loadHealth() {
 
     // Fetch uptime stats
     try {
-      const ur = await fetch('/api/uptime');
+      const ur = await fetch(STATIC_MODE ? '/data/db-stats.json' : '/api/uptime');
       const u = await ur.json();
       const uptimeEl = document.getElementById('health-uptime');
       const rate = u.last_24h?.success_rate ?? 100;
@@ -656,13 +940,13 @@ setInterval(() => {
 
 // Force refresh on tab focus (browser throttles setInterval when backgrounded)
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) { loadHealth(); refreshAll(); loadTrend(); loadJudge(); }
+  if (!document.hidden && modeDetected) { if (!STATIC_MODE) loadHealth(); refreshAll(); loadTrend(); loadJudge(); loadFleet(); loadInvestigations(); }
 });
 
 async function loadJudge() {
   const el = document.getElementById('judge-panel');
   try {
-    const r = await fetch('/api/judge-stats');
+    const r = await fetch(STATIC_MODE ? '/data/judge-stats.json' : '/api/judge-stats');
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
     const gates = d.by_gate || [];
@@ -695,10 +979,132 @@ async function loadJudge() {
   } catch { el.innerHTML = '<div class="empty-state" style="padding:12px">—</div>'; }
 }
 
+async function loadInvestigations() {
+  const el = document.getElementById('investigations-panel');
+  try {
+    const r = await fetch(STATIC_MODE ? '/data/investigations.json' : '/api/investigations');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    const invs = d.investigations || [];
+
+    if (invs.length === 0) {
+      el.innerHTML = '<div class="empty-state" style="padding:12px;color:var(--green)">No active cost anomalies detected</div>';
+      return;
+    }
+
+    const totalWaste = d.total_daily_waste || 0;
+    const header = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)">
+      <span style="font-size:13px;font-weight:600;color:var(--yellow)">Potential savings: ${fmtCost(totalWaste)}/day (${fmtCost(totalWaste * 30)}/mo)</span>
+      <span style="font-size:11px;color:var(--muted)">${invs.length} finding${invs.length !== 1 ? 's' : ''}</span>
+    </div>`;
+
+    const rows = invs.map(inv => {
+      const sevColor = inv.severity === 'high' ? 'var(--red)' : inv.severity === 'medium' ? 'var(--yellow)' : 'var(--muted)';
+      const pattern = typeof inv.pattern === 'object' ? inv.pattern : {};
+      const canFix = pattern.haiku_can_fix;
+      const monthlySavings = (inv.daily_cost_estimate * 30);
+
+      const fixBtn = canFix === true
+        ? `<button onclick="requestFix('${esc(inv.id)}')" style="background:var(--green);color:#fff;border:none;border-radius:4px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer">Fix with Claude</button>`
+        : `<button onclick="dismissInvestigation('${esc(inv.id)}')" style="background:var(--border);color:var(--muted);border:none;border-radius:4px;padding:4px 12px;font-size:11px;cursor:pointer">Dismiss</button>`;
+
+      return `<div style="padding:12px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <span style="width:8px;height:8px;border-radius:50%;background:${sevColor};flex-shrink:0"></span>
+          <span style="font-size:13px;font-weight:500;flex:1">${esc(inv.summary)}</span>
+          <span style="font-weight:600;color:var(--yellow);white-space:nowrap">${fmtCost(inv.daily_cost_estimate)}/day</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:8px;padding-left:16px">
+          ${fixBtn}
+          <span style="font-size:11px;color:var(--muted)">since ${new Date(inv.first_seen).toLocaleDateString()}</span>
+        </div>
+      </div>`;
+    }).join('');
+
+    el.innerHTML = header + rows;
+  } catch {
+    el.innerHTML = '<div class="empty-state" style="padding:12px">—</div>';
+  }
+}
+
+async function requestFix(id) {
+  if (!confirm('Claude will investigate and fix this issue. Proceed?')) return;
+  try {
+    const r = await fetch('/api/investigations/' + id + '/fix', { method: 'POST' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    alert(d.message || 'Fix queued — Claude will handle it in the next session.');
+    loadInvestigations();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+async function dismissInvestigation(id) {
+  try {
+    await fetch('/api/investigations/' + id + '/acknowledge', { method: 'POST' });
+    loadInvestigations();
+  } catch {}
+}
+
+async function loadFleet() {
+  const el = document.getElementById('fleet-panel');
+  try {
+    const r = await fetch(STATIC_MODE ? '/data/fleet.json' : '/api/fleet');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    const sessions = d.sessions || [];
+
+    if (sessions.length === 0) {
+      el.innerHTML = '<div class="empty-state" style="padding:12px">No active fleet sessions</div>';
+      return;
+    }
+
+    const header = `<div style="display:flex;gap:8px;padding:4px 0;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid var(--border);margin-bottom:4px">
+      <span style="width:14px"></span>
+      <span style="width:120px">Project</span>
+      <span style="width:60px">Model</span>
+      <span style="width:70px">Last seen</span>
+      <span style="flex:1">Current task</span>
+      <span style="width:70px;text-align:right">24h cost</span>
+    </div>`;
+
+    const rows = sessions.map(s => {
+      const dotColor = s.status === 'active' ? 'var(--green)' : s.status === 'inactive' ? 'var(--yellow)' : 'var(--red)';
+      const dotAnim = s.status === 'active' ? 'animation:pulse 2s infinite' : s.status === 'stale' ? '' : '';
+      const ageLabel = s.age_min < 1 ? 'now' : s.age_min < 60 ? s.age_min + 'm ago' : Math.floor(s.age_min / 60) + 'h ago';
+      const ageColor = s.status === 'active' ? 'var(--green)' : s.status === 'inactive' ? 'var(--yellow)' : 'var(--red)';
+      const proj = esc(s.project || '(unknown)');
+      const task = esc((s.current_task || '').slice(0, 60));
+      const cost = s.cost_24h ? fmtCost(s.cost_24h.cost) : '—';
+      const calls = s.cost_24h ? s.cost_24h.calls + ' calls' : '';
+
+      return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px;border-bottom:1px solid var(--border)">
+        <div style="width:8px;height:8px;border-radius:50%;background:${dotColor};flex-shrink:0;${dotAnim}"></div>
+        <span style="width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500" title="${esc(s.cwd || '')}">${proj}</span>
+        <span style="width:60px;color:var(--muted);font-size:11px">${esc(s.model || '—')}</span>
+        <span style="width:70px;color:${ageColor};font-size:11px">${ageLabel}</span>
+        <span style="flex:1;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="${esc(s.current_task || '')}">${task}</span>
+        <span style="width:70px;text-align:right;font-weight:600">${cost}</span>
+      </div>`;
+    }).join('');
+
+    const summary = `<div style="display:flex;gap:16px;margin-top:8px;font-size:11px;color:var(--muted)">
+      <span>${d.total} session${d.total !== 1 ? 's' : ''}</span>
+      <span style="color:var(--green)">${d.active} active</span>
+      ${d.stale > 0 ? `<span style="color:var(--red)">${d.stale} stale</span>` : ''}
+    </div>`;
+
+    el.innerHTML = header + rows + summary;
+  } catch {
+    el.innerHTML = '<div class="empty-state" style="padding:12px">—</div>';
+  }
+}
+
 async function loadProjectCosts() {
   const el = document.getElementById('project-costs');
   try {
-    const r = await fetch(apiUrl('/api/project-costs'));
+    const r = await fetch(STATIC_MODE ? `/data/project-costs-${rangeParam()}.json` : apiUrl('/api/project-costs'));
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
     const projects = d.projects || [];
@@ -711,24 +1117,55 @@ async function loadProjectCosts() {
     const maxCost = projects[0]?.cost || 1;
     el.innerHTML = projects.map((p, i) => {
       const pct = Math.max(2, (p.cost / maxCost) * 100);
-      const name = p.project.replace(/^.*[/\\]/, '');  // show just dir name
+      const name = p.project.replace(/^.*[/\\]/, '');
       return `
-        <div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px">
-          <span style="width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(p.project)}">${esc(name)}</span>
-          <div style="flex:1;height:14px;background:var(--border);border-radius:3px;overflow:hidden">
-            <div style="width:${pct}%;height:100%;background:${COLORS[i % COLORS.length]};border-radius:3px"></div>
+        <div class="project-row" data-project="${esc(p.project)}" style="cursor:pointer">
+          <div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px">
+            <span style="width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(p.project)}">${esc(name)}</span>
+            <div style="flex:1;height:14px;background:var(--border);border-radius:3px;overflow:hidden">
+              <div style="width:${pct}%;height:100%;background:${COLORS[i % COLORS.length]};border-radius:3px"></div>
+            </div>
+            <span style="min-width:50px;text-align:right;color:var(--muted)">${p.calls}</span>
+            <span style="min-width:60px;text-align:right;font-weight:600">${fmtCost(p.cost)}</span>
           </div>
-          <span style="min-width:50px;text-align:right;color:var(--muted)">${p.calls}</span>
-          <span style="min-width:60px;text-align:right;font-weight:600">${fmtCost(p.cost)}</span>
+          <div class="project-detail" style="display:none;padding:4px 0 8px 12px;font-size:11px;border-bottom:1px solid var(--border)"></div>
         </div>`;
     }).join('');
+
+    el.querySelectorAll('.project-row').forEach(row => {
+      row.addEventListener('click', async () => {
+        const detail = row.querySelector('.project-detail');
+        if (detail.style.display !== 'none') { detail.style.display = 'none'; return; }
+        detail.style.display = 'block';
+        detail.innerHTML = 'Loading...';
+        try {
+          const r = await fetch(apiUrl(`/api/project-details?project=${encodeURIComponent(row.dataset.project)}&range=${rangeParam()}`));
+          const d = await r.json();
+          const calls = (d.recent_expensive || []).slice(0, 5);
+          if (calls.length === 0) { detail.innerHTML = '<span style="color:var(--muted)">No calls</span>'; return; }
+          detail.innerHTML = `
+            <div style="margin-bottom:4px;color:var(--muted)">Top calls by cost:</div>
+            <table style="width:100%;font-size:11px;border-collapse:collapse">
+              <tr style="color:var(--muted)"><th style="text-align:left">Time</th><th>Model</th><th>Consumer</th><th style="text-align:right">Prompt</th><th style="text-align:right">Output</th><th style="text-align:right">Cost</th></tr>
+              ${calls.map(c => `<tr>
+                <td>${c.timestamp.slice(11, 16)}</td>
+                <td>${shortModel(c.model)}</td>
+                <td>${esc(c.consumer || '')}</td>
+                <td style="text-align:right">${(c.prompt_tokens/1000).toFixed(0)}K</td>
+                <td style="text-align:right">${c.output_tokens}</td>
+                <td style="text-align:right">${fmtCost(c.cost)}</td>
+              </tr>`).join('')}
+            </table>`;
+        } catch { detail.innerHTML = '<span style="color:#e57373">Error loading details</span>'; }
+      });
+    });
   } catch { el.innerHTML = '<div class="empty-state" style="padding:12px">—</div>'; }
 }
 
 async function loadSessions() {
   const el = document.getElementById('sessions-panel');
   try {
-    const r = await fetch(apiUrl('/api/sessions'));
+    const r = await fetch(STATIC_MODE ? `/data/sessions-${rangeParam()}.json` : apiUrl('/api/sessions'));
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
     const sessions = d.sessions || [];
@@ -760,9 +1197,9 @@ async function loadSessions() {
 
 function refreshAll() {
   const rl = rangeLabel();
-  document.getElementById('chart-label').textContent = `Hourly spend — last ${rl}`;
+  document.getElementById('chart-label').textContent = `Spend — last ${rl}`;
   document.querySelectorAll('.range-label').forEach(el => {
-    el.textContent = el.textContent.replace(/—\s*\S+$/, `— ${rl}`);
+    el.textContent = el.textContent.replace(/—\s*.*$/, `— ${rl}`);
   });
   document.body.classList.add('loading');
   Promise.all([load(), loadBreakdown(), loadSavings(), loadProjectCosts(), loadSessions()])
@@ -784,14 +1221,104 @@ function exportExcel() {
 
 document.getElementById('range-select').addEventListener('change', refreshAll);
 
-refreshAll();
-loadTrend();
-loadJudge();
-loadHealth();
+function openSessionHistory() {
+  document.getElementById('history-modal').classList.add('open');
+  loadSessionHistory();
+}
+function closeHistory() {
+  document.getElementById('history-modal').classList.remove('open');
+}
+
+async function loadSessionHistory() {
+  const el = document.getElementById('history-content');
+  el.innerHTML = 'Loading...';
+  try {
+    const range = document.getElementById('range-select').value;
+    const r = await fetch(apiUrl(`/api/sessions?range=${range}&limit=50`));
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    if (!d.sessions || d.sessions.length === 0) {
+      el.innerHTML = '<div class="empty-state">No sessions in selected range</div>';
+      return;
+    }
+    const rows = d.sessions.map(s => {
+      const start = new Date(s.first_call);
+      const startStr = start.toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+      const dur = s.duration_min ? `${Math.round(s.duration_min)}m` : '<1m';
+      const tokens = `${fmtTokens(s.input_tokens)}/${fmtTokens(s.output_tokens)}`;
+      const sid = s.session_id ? esc(s.session_id) : '';
+      return `<tr style="cursor:pointer" onclick="loadCallDetails('${sid}', '${esc(s.project)}')">
+        <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(s.project)}">${esc(s.project)}</td>
+        <td>${startStr}</td>
+        <td>${dur}</td>
+        <td>${s.calls}</td>
+        <td>${tokens}</td>
+        <td style="font-weight:600">${fmtCost(s.cost)}</td>
+      </tr>`;
+    }).join('');
+    el.innerHTML = `
+      <div style="margin-bottom:8px;color:var(--muted);font-size:11px">${d.session_count} sessions · ${d.total_calls} calls · ${fmtCost(d.total_cost)} total · click row for details</div>
+      <table><thead><tr><th>Project</th><th>Start</th><th>Duration</th><th>Calls</th><th>Tokens (in/out)</th><th>Cost</th></tr></thead>
+      <tbody>${rows}</tbody></table>`;
+  } catch (err) {
+    el.innerHTML = `<div class="empty-state">Error: ${esc(err.message)}</div>`;
+  }
+}
+
+async function loadCallDetails(sessionId, project) {
+  const el = document.getElementById('history-content');
+  el.innerHTML = 'Loading call details...';
+  try {
+    const range = document.getElementById('range-select').value;
+    let url = apiUrl(`/api/call-details?range=${range}&limit=100`);
+    if (sessionId) url += `&session_id=${encodeURIComponent(sessionId)}`;
+    else if (project) url += `&project=${encodeURIComponent(project)}`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    if (!d.calls || d.calls.length === 0) {
+      el.innerHTML = '<button onclick="loadSessionHistory()" style="background:var(--bg);color:var(--accent);border:1px solid var(--border);border-radius:4px;padding:6px 12px;cursor:pointer;margin-bottom:12px">&larr; Back</button><div class="empty-state">No calls found</div>';
+      return;
+    }
+    const rows = d.calls.map(c => {
+      const ts = new Date(c.timestamp);
+      const time = ts.toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit'});
+      const preview = c.prompt_preview ? esc(c.prompt_preview).slice(0, 80) + (c.prompt_preview.length > 80 ? '...' : '') : '<no prompt captured>';
+      const cwd = c.caller_cwd ? esc(c.caller_cwd) : '—';
+      return `<tr>
+        <td style="white-space:nowrap">${time}</td>
+        <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace;font-size:11px" title="${c.prompt_preview ? esc(c.prompt_preview) : ''}">${preview}</td>
+        <td style="font-family:monospace;font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis" title="${cwd}">${cwd}</td>
+        <td>${fmtTokens(c.input_tokens)}/${fmtTokens(c.output_tokens)}</td>
+        <td style="font-weight:600">${fmtCost(c.cost)}</td>
+      </tr>`;
+    }).join('');
+    const title = sessionId ? `Session ${sessionId.slice(0,8)}...` : `Project: ${project}`;
+    el.innerHTML = `
+      <button onclick="loadSessionHistory()" style="background:var(--bg);color:var(--accent);border:1px solid var(--border);border-radius:4px;padding:6px 12px;cursor:pointer;margin-bottom:12px">&larr; Back to sessions</button>
+      <div style="margin-bottom:8px;font-weight:600">${esc(title)} — ${d.count} calls</div>
+      <table><thead><tr><th>Time</th><th>Prompt</th><th>CWD</th><th>Tokens</th><th>Cost</th></tr></thead>
+      <tbody>${rows}</tbody></table>`;
+  } catch (err) {
+    el.innerHTML = `<button onclick="loadSessionHistory()" style="background:var(--bg);color:var(--accent);border:1px solid var(--border);border-radius:4px;padding:6px 12px;cursor:pointer;margin-bottom:12px">&larr; Back</button><div class="empty-state">Error: ${esc(err.message)}</div>`;
+  }
+}
+
+async function loadMeta() {
+  try {
+    const r = await fetch('/data/meta.json');
+    if (!r.ok) return;
+    const d = await r.json();
+    const el = document.getElementById('last-refresh');
+    const ts = new Date(d.generated_at);
+    el.textContent = 'snapshot ' + ts.toLocaleString();
+    el.title = 'Data generated hourly by Lambda. Not live.';
+  } catch {}
+}
 
 async function loadDbStats() {
   try {
-    const r = await fetch('/api/db-stats');
+    const r = await fetch(STATIC_MODE ? '/data/db-stats.json' : '/api/db-stats');
     if (!r.ok) return;
     const d = await r.json();
     const oldest = d.oldest ? new Date(d.oldest).toLocaleDateString() : '—';
@@ -800,12 +1327,36 @@ async function loadDbStats() {
       `${d.rows.toLocaleString()} rows · ${d.models} models · ${d.projects} projects · ${d.sessions} sessions · ${fmtCost(d.total_cost)} total · ${oldest} – ${newest}`;
   } catch {}
 }
-loadDbStats();
 
-setInterval(refreshAll, 60000);
-setInterval(loadTrend, 120000);
-setInterval(loadJudge, 60000);
-setInterval(loadHealth, 15000);
+let modeDetected = false;
+detectStaticMode().then(() => {
+  modeDetected = true;
+  if (STATIC_MODE) {
+    const sel = document.getElementById('range-select');
+    for (const opt of [...sel.options]) {
+      if (!STATIC_RANGES.includes(opt.value)) opt.disabled = true;
+    }
+    sel.value = '24h';
+    loadMeta();
+  }
+  refreshAll();
+  loadTrend();
+  loadJudge();
+  loadInvestigations();
+  loadDbStats();
+  if (!STATIC_MODE) {
+    loadHealth();
+    loadFleet();
+    setInterval(refreshAll, 60000);
+    setInterval(loadTrend, 120000);
+    setInterval(loadJudge, 60000);
+    setInterval(loadHealth, 15000);
+    setInterval(loadFleet, 30000);
+    setInterval(loadInvestigations, 300000);
+  } else {
+    loadFleet();
+  }
+});
 </script>
 </body>
 </html>

@@ -1,21 +1,37 @@
 'use strict';
 
 let _pricing = null;
+let _upstreamPricing = null;
 
 /**
  * Load the pricing table from config.
  * @param {Object} pricingConfig - The `pricing` block from config.yaml
+ * @param {Object} [upstreamPricingConfig] - The `upstream_pricing` block (per-upstream rate overrides)
  */
-function loadPricing(pricingConfig) {
+function loadPricing(pricingConfig, upstreamPricingConfig) {
   _pricing = pricingConfig || {};
+  _upstreamPricing = upstreamPricingConfig || null;
 }
 
 /**
- * Look up model pricing. Falls back to 'default' if model not found.
+ * Look up model pricing, optionally scoped to a specific upstream.
+ * Priority: upstream-specific rate > global model rate > global default.
  * @param {string} model
+ * @param {string} [upstream] - upstream name (e.g. 'rdsec', 'anthropic')
  * @returns {Object|null} pricing entry with input/output/cache_read/cache_write (per-million USD)
  */
-function getModelPricing(model) {
+function getModelPricing(model, upstream) {
+  // Check upstream-specific pricing first
+  if (upstream && _upstreamPricing && _upstreamPricing[upstream]) {
+    const upPricing = _upstreamPricing[upstream];
+    if (upPricing[model]) return upPricing[model];
+    for (const key of Object.keys(upPricing)) {
+      if (key === 'default') continue;
+      if (model && model.startsWith(key)) return upPricing[key];
+    }
+    if (upPricing.default) return upPricing.default;
+  }
+
   if (!_pricing) return null;
 
   // Direct match
@@ -40,12 +56,13 @@ function getModelPricing(model) {
  * @param {number} usage.output_tokens
  * @param {number} [usage.cache_read_input_tokens]
  * @param {number} [usage.cache_creation_input_tokens]
+ * @param {string} [upstream] - Upstream name for per-upstream pricing
  * @returns {number} Estimated cost in USD (6 decimal precision)
  */
-function calculateCost(model, usage) {
+function calculateCost(model, usage, upstream) {
   if (!usage) return 0;
 
-  const pricing = getModelPricing(model);
+  const pricing = getModelPricing(model, upstream);
   if (!pricing) {
     // No pricing found — return 0 to avoid blocking requests
     console.warn(`[pricing] No pricing data for model: ${model}`);
@@ -57,20 +74,25 @@ function calculateCost(model, usage) {
   const cacheReadTokens  = usage.cache_read_input_tokens        || 0;
   const cacheWriteTokens = usage.cache_creation_input_tokens    || 0;
 
-  // Some upstreams include cache tokens inside input_tokens. Subtract them
-  // to avoid double-charging: once at the full input rate and again at the
-  // cache rate. If input_tokens is already net-of-cache, subtraction yields
-  // the same value (cache fields are 0).
-  const inputTokens = Math.max(0, rawInputTokens - cacheReadTokens - cacheWriteTokens);
-
-  // Pricing is per million tokens
   const M = 1_000_000;
-  const inputCost      = (inputTokens      / M) * (pricing.input      || 0);
-  const outputCost     = (outputTokens     / M) * (pricing.output     || 0);
-  const cacheReadCost  = (cacheReadTokens  / M) * (pricing.cache_read || 0);
-  const cacheWriteCost = (cacheWriteTokens / M) * (pricing.cache_write || 0);
+  let total;
 
-  const total = inputCost + outputCost + cacheReadCost + cacheWriteCost;
+  if (pricing.flat_input) {
+    // Flat-input model: all prompt tokens (input + cache_read + cache_write) charged at one rate.
+    // Used by upstreams like RDsec that don't differentiate cached vs fresh input.
+    const allInputTokens = rawInputTokens + cacheReadTokens + cacheWriteTokens;
+    const inputCost  = (allInputTokens / M) * pricing.flat_input;
+    const outputCost = (outputTokens   / M) * (pricing.output || 0);
+    total = inputCost + outputCost;
+  } else {
+    // Separate-rate model: different rates for input/cache_read/cache_write.
+    const inputTokens = Math.max(0, rawInputTokens - cacheReadTokens - cacheWriteTokens);
+    const inputCost      = (inputTokens      / M) * (pricing.input       || 0);
+    const outputCost     = (outputTokens     / M) * (pricing.output      || 0);
+    const cacheReadCost  = (cacheReadTokens  / M) * (pricing.cache_read  || 0);
+    const cacheWriteCost = (cacheWriteTokens / M) * (pricing.cache_write || 0);
+    total = inputCost + outputCost + cacheReadCost + cacheWriteCost;
+  }
   return parseFloat(total.toFixed(6));
 }
 

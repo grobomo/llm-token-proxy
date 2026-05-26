@@ -82,7 +82,7 @@ function resolveUpstream(req) {
   throw new Error('No upstream configured. Set config.upstreams (preferred) or config.upstream in config.yaml.');
 }
 
-pricing.loadPricing(config.pricing);
+pricing.loadPricing(config.pricing, config.upstream_pricing);
 
 // ---------------------------------------------------------------------------
 // Model overrides — route specific patterns to cheaper models
@@ -619,10 +619,22 @@ app.all('/v1/*', async (req, res) => {
   }
   const startTime  = Date.now();
   const consumer   = detectConsumer(req);
-  const project    = req.headers['x-project'] ? String(req.headers['x-project']) : null;
+  let   project    = req.headers['x-project'] ? String(req.headers['x-project']) : null;
   const task       = req.headers['x-task']    ? String(req.headers['x-task'])    : null;
   const sessionId  = req.headers['x-claude-code-session-id'] || null;
   const userAgent  = req.headers['user-agent'] ? String(req.headers['user-agent']).slice(0, 256) : null;
+  const callerCwd  = req.headers['x-caller-cwd'] ? String(req.headers['x-caller-cwd']).slice(0, 512) : null;
+  let   promptPreview = null;
+
+  if (!project) {
+    if (['ask-l1', 'ask-l2', 'ask-l3', 'judge-l1', 'judge-l2', 'judge-l3'].includes(consumer)) {
+      project = '(system)';
+    } else if (consumer === 'unknown' && userAgent === 'undici') {
+      project = '(system)';
+    } else if (consumer === 'claude-code' && !sessionId) {
+      project = '(cli)';
+    }
+  }
 
   // ---- Resolve upstream based on API key format ----
   let upstreamName, upstreamBaseResolved;
@@ -657,12 +669,23 @@ app.all('/v1/*', async (req, res) => {
   let isStreaming  = false;
 
   let originalModel = null;
+  let messageCount = 0;
 
   if (requestBody && requestBody.length > 0) {
     try {
       const parsed = JSON.parse(requestBody.toString('utf8'));
       model       = parsed.model   || 'unknown';
       isStreaming  = Boolean(parsed.stream);
+      messageCount = Array.isArray(parsed.messages) ? parsed.messages.length : 0;
+
+      if (Array.isArray(parsed.messages) && parsed.messages.length > 0) {
+        const lastUser = [...parsed.messages].reverse().find(m => m.role === 'user');
+        if (lastUser) {
+          const content = typeof lastUser.content === 'string' ? lastUser.content
+            : Array.isArray(lastUser.content) ? lastUser.content.filter(b => b.type === 'text').map(b => b.text).join(' ') : '';
+          promptPreview = content.slice(0, 200) || null;
+        }
+      }
 
       // Model override — route specific patterns to cheaper models
       const override = resolveModelOverride(model, consumer, parsed);
@@ -692,6 +715,30 @@ app.all('/v1/*', async (req, res) => {
       }
     } catch {
       // Non-JSON body — passthrough as-is
+    }
+  }
+
+
+  // ---- Context guard: reject oversized requests ----
+  const cg = config.context_guard;
+  if (cg && cg.enabled !== false) {
+    const exempt = (cg.exempt_consumers || []).includes(consumer);
+    if (!exempt) {
+      const bodyBytes = requestBody?.length || 0;
+      const estTokens = Math.floor(bodyBytes / 4);
+      const reasons = [];
+      if (cg.max_body_bytes && bodyBytes > cg.max_body_bytes) reasons.push(`body=${bodyBytes}>${cg.max_body_bytes}`);
+      if (cg.max_messages && messageCount > cg.max_messages) reasons.push(`msgs=${messageCount}>${cg.max_messages}`);
+      if (cg.max_estimated_tokens && estTokens > cg.max_estimated_tokens) reasons.push(`est_tok=${estTokens}>${cg.max_estimated_tokens}`);
+      if (reasons.length > 0) {
+        log('warn', `[context-guard] REJECTED consumer=${consumer} model=${model} ${reasons.join(' ')}`);
+        return res.status(413).json({
+          error: 'context_too_large',
+          message: 'Request exceeds context size limits. Truncate conversation history before retrying.',
+          details: { body_bytes: bodyBytes, messages: messageCount, estimated_tokens: estTokens },
+          limits: { max_body_bytes: cg.max_body_bytes, max_messages: cg.max_messages, max_estimated_tokens: cg.max_estimated_tokens },
+        });
+      }
     }
   }
 
@@ -843,8 +890,7 @@ app.all('/v1/*', async (req, res) => {
         sessionId,
         queryDb: (sql) => db.query(sql),
       });
-      const cost = pricing.calculateCost(model, estimatedUsage);
-      // Prefer LiteLLM's authoritative cost when available; use our estimate as fallback
+      const cost = pricing.calculateCost(model, estimatedUsage, upstreamName);
       const finalCost = litellmCost != null ? litellmCost : cost;
       db.logUsage({
         consumer,
@@ -932,7 +978,7 @@ app.all('/v1/*', async (req, res) => {
       sessionId,
       queryDb: (sql) => db.query(sql),
     });
-    const cost = pricing.calculateCost(model, estimatedUsage);
+    const cost = pricing.calculateCost(model, estimatedUsage, upstreamName);
     const finalCost = litellmCost != null ? litellmCost : cost;
     db.logUsage({
       consumer,
@@ -947,6 +993,7 @@ app.all('/v1/*', async (req, res) => {
       http_status:        httpStatus,
       project, task, user_agent: userAgent, session_id: sessionId, original_model: originalModel,
       cache_estimated:    cacheEstimated,
+      caller_cwd: callerCwd, prompt_preview: promptPreview,
     });
     log('info', `[done] consumer=${consumer} model=${model} upstream=${upstreamName} in=${estimatedUsage.input_tokens} out=${estimatedUsage.output_tokens} cache_r=${estimatedUsage.cache_read_input_tokens || 0} cache_w=${estimatedUsage.cache_creation_input_tokens || 0}${cacheEstimated ? ' (est)' : ''} cost=$${finalCost}${litellmCost != null && Math.abs(cost - litellmCost) > 0.001 ? ` (est=$${cost})` : ''} dur=${duration}ms`);
   } else {
@@ -959,6 +1006,7 @@ app.all('/v1/*', async (req, res) => {
       duration_ms: duration,
       http_status: httpStatus,
       project, task, user_agent: userAgent, session_id: sessionId, original_model: originalModel,
+      caller_cwd: callerCwd, prompt_preview: promptPreview,
     });
     if (httpStatus >= 200 && httpStatus < 300) {
       log('debug', `[done] no usage data in response for consumer=${consumer} model=${model} upstream=${upstreamName} status=${httpStatus}${fallbackCost > 0 ? ` litellm_cost=$${fallbackCost}` : ''}`);
